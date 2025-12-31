@@ -244,26 +244,32 @@ FlightMap {
         showText: !pipMode
     }
 
-    // Add trajectory lines to the map
-    MapPolyline {
-        id:         trajectoryPolyline
-        line.width: 3
-        line.color: "red"
-        z:          QGroundControl.zOrderTrajectoryLines
-        visible:    !pipMode
+    // Add trajectory lines for all vehicles on the map
+    Repeater {
+        model: QGroundControl.multiVehicleManager.vehicles
+        
+        MapPolyline {
+            id:         trajectoryPolyline
+            line.width: 3
+            line.color: object === _activeVehicle ? "red" : (index === 0 ? "#0066FF" : "#00FF66")  // Blue for V1, Green for V2
+            z:          QGroundControl.zOrderTrajectoryLines
+            visible:    !pipMode
+            opacity:    object === _activeVehicle ? 1.0 : 0.7
 
-        Connections {
-            target:                 QGroundControl.multiVehicleManager
-            function onActiveVehicleChanged(activeVehicle) {
-                trajectoryPolyline.path = _activeVehicle ? _activeVehicle.trajectoryPoints.list() : []
+            property var _vehicle: object
+
+            Component.onCompleted: {
+                if (_vehicle && _vehicle.trajectoryPoints) {
+                    trajectoryPolyline.path = _vehicle.trajectoryPoints.list()
+                }
             }
-        }
 
-        Connections {
-            target:                             _activeVehicle ? _activeVehicle.trajectoryPoints : null
-            function onPointAdded(coordinate) { trajectoryPolyline.addCoordinate(coordinate) }
-            function onUpdateLastPoint(coordinate) { trajectoryPolyline.replaceCoordinate(trajectoryPolyline.pathLength() - 1, coordinate) }
-            function onPointsCleared() { trajectoryPolyline.path = [] }
+            Connections {
+                target: _vehicle ? _vehicle.trajectoryPoints : null
+                function onPointAdded(coordinate) { trajectoryPolyline.addCoordinate(coordinate) }
+                function onUpdateLastPoint(coordinate) { trajectoryPolyline.replaceCoordinate(trajectoryPolyline.pathLength() - 1, coordinate) }
+                function onPointsCleared() { trajectoryPolyline.path = [] }
+            }
         }
     }
 

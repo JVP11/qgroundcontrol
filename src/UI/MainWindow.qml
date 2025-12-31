@@ -25,14 +25,142 @@ import QGroundControl.Toolbar
 ApplicationWindow {
     id:         mainWindow
     visible:    true
+    title:      "ASTHRA - Advanced Strategic Tactical Humanitarian Response Analyser"
     // The special casing for android prevents white bars from showing up on the edges of the screen with newer android versions
     flags:      Qt.Window | (ScreenTools.isAndroid ? Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint : 0)
 
     property bool   _utmspSendActTrigger
 
+    // ASTHRA Mission Monitoring
+    property var offboardMonitor: null
+    property var missionLogger: null
+    property var telemetryLogger: null
+    property var cameraFrameCapture: null
+    property var disasterReportGenerator: null
+    property var disasterReportPanel: null
+    property var _lastActiveVehicle: null  // Guard to prevent re-initialization loops
+
     Component.onCompleted: {
         // Start the sequence of first run prompt(s)
         firstRunPromptManager.nextPrompt()
+
+        // Initialize ASTHRA monitoring
+        initializeASTHRAMonitoring()
+    }
+
+    function initializeASTHRAMonitoring() {
+        // Create OFFBOARD monitor
+        var monitorComponent = Qt.createComponent("qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRAOffboardMonitor.qml")
+        if (monitorComponent.status === Component.Ready) {
+            offboardMonitor = monitorComponent.createObject(mainWindow)
+            if (offboardMonitor) {
+                offboardMonitor.offboardExitDetected.connect(function(event) {
+                    if (missionLogger) {
+                        missionLogger.logOffboardEvent(event)
+                    }
+                })
+            }
+        }
+
+        // Create Mission Logger
+        var loggerComponent = Qt.createComponent("qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRAMissionLogger.qml")
+        if (loggerComponent.status === Component.Ready) {
+            missionLogger = loggerComponent.createObject(mainWindow)
+        }
+
+        // Create Telemetry Logger
+        var telemetryComponent = Qt.createComponent("qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRATelemetryLogger.qml")
+        if (telemetryComponent.status === Component.Ready) {
+            telemetryLogger = telemetryComponent.createObject(mainWindow)
+            if (missionLogger && telemetryLogger) {
+                missionLogger.setTelemetryLogger(telemetryLogger)
+            }
+        }
+
+        // Create Camera Frame Capture System
+        var frameCaptureComponent = Qt.createComponent("qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRACameraFrameCapture.qml")
+        if (frameCaptureComponent.status === Component.Ready) {
+            cameraFrameCapture = frameCaptureComponent.createObject(mainWindow)
+            if (cameraFrameCapture && telemetryLogger && missionLogger) {
+                var vehicle = QGroundControl.multiVehicleManager.activeVehicle
+                // Access VideoManager via QGroundControl global
+                var videoManager = null
+                try {
+                    videoManager = QGroundControl.videoManager
+                } catch(e) {
+                    console.log("ASTHRA: Could not access VideoManager:", e)
+                }
+                if (videoManager) {
+                    cameraFrameCapture.initialize(vehicle, videoManager, telemetryLogger, missionLogger)
+                    // Connect telemetry logger to frame capture
+                    telemetryLogger.frameCapture = cameraFrameCapture
+                } else {
+                    console.log("ASTHRA: VideoManager not available - frame capture disabled")
+                }
+            }
+        }
+
+        // Create Disaster Report Generator
+        var reportGenComponent = Qt.createComponent("qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRADisasterReportGenerator.qml")
+        if (reportGenComponent.status === Component.Ready) {
+            disasterReportGenerator = reportGenComponent.createObject(mainWindow)
+            if (disasterReportGenerator && missionLogger && telemetryLogger && offboardMonitor) {
+                var vehicle = QGroundControl.multiVehicleManager.activeVehicle
+                var missionController = flyView ? flyView.planController : null
+                disasterReportGenerator.initialize(missionLogger, telemetryLogger, offboardMonitor, vehicle, missionController, cameraFrameCapture)
+            }
+        }
+
+        // Connect to active vehicle changes - with guard to prevent loops
+        QGroundControl.multiVehicleManager.activeVehicleChanged.connect(function() {
+            var vehicle = QGroundControl.multiVehicleManager.activeVehicle
+            
+            // Guard: Only update if vehicle actually changed
+            if (vehicle === mainWindow._lastActiveVehicle) {
+                return
+            }
+            
+            console.log("ASTHRA: Active vehicle changed to:", vehicle ? vehicle.id : "None")
+            mainWindow._lastActiveVehicle = vehicle
+            
+            // Use Qt.callLater to batch updates and prevent cascading
+            Qt.callLater(function() {
+                // Initialize components with new vehicle (they handle disconnection internally)
+                if (offboardMonitor) {
+                    offboardMonitor.initialize(vehicle)
+                }
+                if (missionLogger) {
+                    missionLogger.initialize(vehicle)
+                    if (vehicle && vehicle.armed) {
+                        missionLogger.startMission()
+                    }
+                }
+                if (telemetryLogger) {
+                    telemetryLogger.initialize(vehicle)
+                }
+                if (cameraFrameCapture) {
+                    var videoManager = null
+                    try {
+                        videoManager = QGroundControl.videoManager
+                    } catch(e) {
+                        console.log("ASTHRA: Could not access VideoManager:", e)
+                    }
+                    if (videoManager) {
+                        cameraFrameCapture.initialize(vehicle, videoManager, telemetryLogger, missionLogger)
+                        if (telemetryLogger) {
+                            telemetryLogger.frameCapture = cameraFrameCapture
+                        }
+                    }
+                }
+                if (disasterReportGenerator) {
+                    var missionController = flyView ? flyView.planController : null
+                    disasterReportGenerator.initialize(missionLogger, telemetryLogger, offboardMonitor, vehicle, missionController, cameraFrameCapture)
+                }
+            })
+        })
+
+        // Monitor vehicle armed state for mission start/end - handled in activeVehicleChanged above
+        // The missionLogger.initialize() will connect to armedChanged signal
     }
 
     /// Saves main window position and size and re-opens it in the same position and size next time
@@ -126,10 +254,14 @@ ApplicationWindow {
     }
 
     function showTool(toolTitle, toolSource, toolIcon) {
+        console.log("ASTHRA: showTool called - title:", toolTitle, "source:", toolSource)
         toolDrawer.backIcon     = flyView.visible ? "/qmlimages/PaperPlane.svg" : "/qmlimages/Plan.svg"
         toolDrawer.toolTitle    = toolTitle
         toolDrawer.toolSource   = toolSource
         toolDrawer.toolIcon     = toolIcon
+        // Set source directly to Loader
+        toolDrawerLoader.source = toolSource
+        console.log("ASTHRA: Set toolDrawerLoader.source to:", toolSource)
         toolDrawer.visible      = true
     }
 
@@ -155,9 +287,21 @@ ApplicationWindow {
     }
 
     function showSettingsTool(settingsPage = "") {
-        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/res/QGCLogoWhite")
+        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "")  // Logo removed for ASTHRA
         if (settingsPage !== "") {
             toolDrawerLoader.item.showSettingsPage(settingsPage)
+        }
+    }
+
+    function showDualVehicleConnection() {
+        showTool(qsTr("Dual Vehicle Connection"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRADualVehicleConnection.qml", "")
+    }
+
+    function showRescueReport() {
+        showTool(qsTr("Rescue Report - OFFBOARD Events"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRARescueReportPanel.qml", "")
+        if (toolDrawerLoader.item && missionLogger) {
+            toolDrawerLoader.item.missionLogger = missionLogger
+            toolDrawerLoader.item.offboardMonitor = offboardMonitor
         }
     }
 
@@ -263,19 +407,166 @@ ApplicationWindow {
         color:          QGroundControl.globalPalette.window
     }
 
-    FlyView {
-        id:                     flyView
-        anchors.fill:           parent
+    // ============================================================================
+    // ASTHRA - LOCKED MILITARY-INDUSTRIAL LAYOUT
+    // Fixed structure: Top Strip | Left Column | Central Workspace | Right Column | Bottom Bar
+    // ============================================================================
+
+    // ============================================================================
+    // ASTHRA - LOCKED MILITARY-INDUSTRIAL LAYOUT
+    // Fixed structure: Top Strip | Left Column | Central Workspace | Right Column | Bottom Bar
+    // ============================================================================
+
+    // Top Status Strip
+    Loader {
+        id: topStatusStrip
+        source: "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRATopStatusStrip.qml"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.error("Failed to load ASTHRATopStatusStrip:", sourceComponent.errorString())
+            }
+        }
     }
 
-    PlanView {
-        id:             planView
-        anchors.fill:   parent
-        visible:        false
+    // Left System Control Column
+    Loader {
+        id: leftControlColumn
+        source: "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRALeftControlColumn.qml"
+        anchors.left: parent.left
+        anchors.top: topStatusStrip.bottom
+        anchors.bottom: bottomCommandBar.top
+        onLoaded: {
+            if (item) {
+                item.globals = globals
+            }
+        }
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.error("Failed to load ASTHRALeftControlColumn:", sourceComponent.errorString())
+            }
+        }
     }
 
-    footer: LogReplayStatusBar {
-        visible: QGroundControl.settingsManager.flyViewSettings.showLogReplayStatusBar.rawValue
+    // Right Telemetry Column
+    Loader {
+        id: rightTelemetryColumn
+        source: "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRARightTelemetryColumn.qml"
+        anchors.right: parent.right
+        anchors.top: topStatusStrip.bottom
+        anchors.bottom: bottomCommandBar.top
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.error("Failed to load ASTHRARightTelemetryColumn:", sourceComponent.errorString())
+            }
+        }
+    }
+
+    // Central Mission Workspace (Fly/Plan/Analyze views)
+    Rectangle {
+        id:                     centralWorkspace
+        anchors.left:           leftControlColumn.right
+        anchors.right:          rightTelemetryColumn.left
+        anchors.top:            topStatusStrip.bottom
+        anchors.bottom:         bottomCommandBar.top
+        color:                  qgcPal.window
+        border.width:           2
+        border.color:           qgcPal.buttonBorder
+
+        // Military corner brackets on workspace (optimized Rectangle-based for performance)
+        Item {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.margins: 3
+            width: 12
+            height: 12
+            Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 2; height: 12; color: qgcPal.colorBlue }
+            Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 12; height: 2; color: qgcPal.colorBlue }
+        }
+
+        Item {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 3
+            width: 12
+            height: 12
+            Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 2; height: 12; color: qgcPal.colorBlue }
+            Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 12; height: 2; color: qgcPal.colorBlue }
+        }
+
+        Item {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.margins: 3
+            width: 12
+            height: 12
+            Rectangle { anchors.left: parent.left; anchors.bottom: parent.bottom; width: 2; height: 12; color: qgcPal.colorBlue }
+            Rectangle { anchors.left: parent.left; anchors.bottom: parent.bottom; width: 12; height: 2; color: qgcPal.colorBlue }
+        }
+
+        Item {
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.margins: 3
+            width: 12
+            height: 12
+            Rectangle { anchors.right: parent.right; anchors.bottom: parent.bottom; width: 2; height: 12; color: qgcPal.colorBlue }
+            Rectangle { anchors.right: parent.right; anchors.bottom: parent.bottom; width: 12; height: 2; color: qgcPal.colorBlue }
+        }
+
+        FlyView {
+            id:                     flyView
+            anchors.fill:           parent
+        }
+
+        // OFFBOARD Event Map Markers (overlay on map)
+        Loader {
+            id: offboardMarkersLoader
+            source: "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRAOffboardMapMarkers.qml"
+            visible: flyView.visible
+            onLoaded: {
+                if (item && flyView._mapControl) {
+                    item.map = flyView._mapControl
+                    item.offboardEvents = Qt.binding(function() {
+                        return missionLogger ? missionLogger.getOffboardEvents() : []
+                    })
+                }
+            }
+        }
+
+        PlanView {
+            id:             planView
+            anchors.fill:   parent
+            visible:        false
+        }
+    }
+
+    // Bottom Command Bar
+    Loader {
+        id: bottomCommandBar
+        source: "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRABottomCommandBar.qml"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        onLoaded: {
+            if (item) {
+                item.flyView = flyView
+                item.planView = planView
+                item.globals = globals
+            }
+        }
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.error("Failed to load ASTHRABottomCommandBar:", sourceComponent.errorString())
+            }
+        }
+    }
+
+    footer: Item {
+        // Footer disabled for ASTHRA layout
+        height: 0
     }
 
     MessageDialog {
@@ -322,18 +613,21 @@ ApplicationWindow {
         }
     }
 
+    // Tool Drawer - Overlays entire ASTHRA layout when visible
     Rectangle {
         id:             toolDrawer
         anchors.fill:   parent
         visible:        false
+        z:              1000  // Ensure it's on top of ASTHRA layout
         color:          qgcPal.window
 
         property var backIcon
         property string toolTitle
-        property alias toolSource:  toolDrawerLoader.source
+        property string toolSource: ""
         property var toolIcon
 
         onVisibleChanged: {
+            console.log("ASTHRA: toolDrawer visible changed to:", visible, "toolSource:", toolSource)
             if (!toolDrawer.visible) {
                 toolDrawerLoader.source = ""
             }
@@ -360,18 +654,27 @@ ApplicationWindow {
                 anchors.bottom:     parent.bottom
                 spacing:            ScreenTools.defaultFontPixelWidth
 
-                QGCToolBarButton {
-                    id: qgcButton
-                    height: parent.height
-                    icon.source: "/res/QGCLogoFull.svg"
-                    logo: true
-                    onClicked: mainWindow.showToolSelectDialog()
+                // BACK Button - Military Standard
+                QGCButton {
+                    id:                 backButton
+                    text:               "BACK"
+                    font.family:        ScreenTools.fixedFontFamily
+                    font.weight:        Font.Bold
+                    font.pointSize:     ScreenTools.defaultFontPointSize * 1.0
+                    Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 14
+                    Layout.preferredHeight: parent.height * 0.8
+                    onClicked:          {
+                        toolDrawer.visible = false
+                    }
                 }
 
                 QGCLabel {
                     id:             toolbarDrawerText
                     text:           toolDrawer.toolTitle
                     font.pointSize: ScreenTools.largeFontPointSize
+                    font.family:    ScreenTools.fixedFontFamily
+                    font.weight:    Font.Bold
+                    Layout.fillWidth: true
                 }
             }
         }
@@ -387,6 +690,49 @@ ApplicationWindow {
                 target:                 toolDrawerLoader.item
                 ignoreUnknownSignals:   true
                 function onPopout() { toolDrawer.visible = false }
+            }
+
+            onLoaded: {
+                console.log("ASTHRA: Tool drawer loader loaded, source:", toolDrawerLoader.source)
+                console.log("ASTHRA: Tool drawer loader item:", toolDrawerLoader.item)
+                console.log("ASTHRA: Tool drawer loader status:", toolDrawerLoader.status)
+                if (toolDrawerLoader.status === Loader.Error) {
+                    console.error("ASTHRA: Loader ERROR -", toolDrawerLoader.errorString())
+                }
+                if (toolDrawerLoader.item) {
+                    console.log("ASTHRA: Tool drawer item width:", toolDrawerLoader.item.width, "height:", toolDrawerLoader.item.height)
+                } else {
+                    console.error("ASTHRA: Tool drawer item is NULL!")
+                }
+                // Pass mission logger and offboard monitor to rescue report panel
+                if (toolDrawerLoader.item && toolDrawerLoader.item.missionLogger !== undefined) {
+                    toolDrawerLoader.item.missionLogger = missionLogger
+                }
+                if (toolDrawerLoader.item && toolDrawerLoader.item.offboardMonitor !== undefined) {
+                    toolDrawerLoader.item.offboardMonitor = offboardMonitor
+                }
+                // Pass mainWindow reference to dual vehicle connection panel
+                if (toolDrawerLoader.item && toolDrawerLoader.item.mainWindow !== undefined) {
+                    toolDrawerLoader.item.mainWindow = mainWindow
+                }
+                // Refresh report when loaded
+                if (toolDrawerLoader.item && typeof toolDrawerLoader.item.refreshReport === 'function') {
+                    toolDrawerLoader.item.refreshReport()
+                }
+            }
+            
+            onStatusChanged: {
+                console.log("ASTHRA: Tool drawer loader status changed to:", status, "source:", toolDrawerLoader.source)
+                if (status === Loader.Error) {
+                    console.error("ASTHRA: Tool drawer loader ERROR:", toolDrawerLoader.source)
+                    console.error("ASTHRA: Error string:", toolDrawerLoader.errorString())
+                } else if (status === Loader.Ready) {
+                    console.log("ASTHRA: Tool drawer loader READY:", toolDrawerLoader.source)
+                } else if (status === Loader.Loading) {
+                    console.log("ASTHRA: Tool drawer loader LOADING:", toolDrawerLoader.source)
+                } else if (status === Loader.Null) {
+                    console.log("ASTHRA: Tool drawer loader NULL (source cleared)")
+                }
             }
         }
     }

@@ -16,7 +16,7 @@ ListModel {
     ListElement {
         name: qsTr("General")
         url: "qrc:/qml/QGroundControl/AppSettings/GeneralSettings.qml"
-        iconUrl: "qrc:/res/QGCLogoWhite.svg"
+        iconUrl: ""  // QGC Logo removed for ASTHRA branding
         pageVisible: function() { return true }
     }
 
@@ -106,6 +106,13 @@ ListModel {
         name: qsTr("Telemetry")
         url: "qrc:/qml/QGroundControl/AppSettings/TelemetrySettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/drone.svg"
+        pageVisible: function() { return true }
+    }
+
+    ListElement {
+        name: qsTr("Disaster Report")
+        url: "qrc:/qml/QGroundControl/AppSettings/DisasterReportSettings.qml"
+        iconUrl: "qrc:/InstrumentValueIcons/alert.svg"
         pageVisible: function() { return true }
     }
 
