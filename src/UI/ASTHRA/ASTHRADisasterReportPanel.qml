@@ -59,7 +59,7 @@ Rectangle {
                 // ASTHRA Branding
                 RowLayout {
                     spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    
+
                     Rectangle {
                         width: 4
                         height: ScreenTools.defaultFontPixelHeight * 1.5
@@ -88,14 +88,14 @@ Rectangle {
                     Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10
                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.2
                     radius: ScreenTools.defaultFontPixelWidth * 0.3
-                    color: reportGenerating ? qgcPal.colorOrange : 
+                    color: reportGenerating ? qgcPal.colorOrange :
                            (generatedReport ? qgcPal.colorGreen : qgcPal.windowShade)
                     border.color: qgcPal.buttonBorder
                     border.width: 1
 
                     QGCLabel {
                         anchors.centerIn: parent
-                        text: reportGenerating ? "GENERATING..." : 
+                        text: reportGenerating ? "GENERATING..." :
                               (generatedReport ? "READY" : "IDLE")
                         font.pointSize: ScreenTools.smallFontPointSize
                         font.weight: Font.Bold
@@ -472,10 +472,10 @@ Rectangle {
 
         exportFormat = "json"
         var metadata = reportGenerator.frameCapture.exportFrameMetadataJSON()
-        
+
         saveDialog.nameFilters = ["*.json"]
         saveDialog.open()
-        
+
         // Store metadata for saving
         _frameMetadataToSave = metadata
     }
@@ -488,7 +488,7 @@ Rectangle {
         onAccepted: {
             var filePath = selectedFile.toString().replace("file://", "")
             var content = ""
-            
+
             switch (exportFormat) {
                 case "json":
                     content = reportGenerator.exportJSON()
@@ -503,7 +503,7 @@ Rectangle {
                     content = reportGenerator.exportGeoJSON()
                     break
             }
-            
+
             // Write file (would need C++ helper for actual file writing)
             console.log("Would save to:", filePath)
             console.log("Content length:", content.length)
@@ -525,7 +525,7 @@ Rectangle {
 
         // Generate report
         generatedReport = reportGenerator.generateFullReport()
-        
+
         reportGenerating = false
     }
 
@@ -533,10 +533,10 @@ Rectangle {
         if (!reportGenerator || !generatedReport) return
 
         exportFormat = format
-        var extension = format === "json" ? "json" : 
+        var extension = format === "json" ? "json" :
                        format === "kml" ? "kml" :
                        format === "csv" ? "csv" : "geojson"
-        
+
         saveDialog.nameFilters = ["*." + extension]
         saveDialog.open()
     }
@@ -558,7 +558,7 @@ Rectangle {
     function formatAreaOfOperations(ao) {
         if (!ao) return "No data"
         return "Coverage Area: " + (ao.coverageArea ? ao.coverageArea.toFixed(2) + " km²" : "N/A") + "\n" +
-               "Boundaries: " + (ao.disasterZoneBoundaries ? 
+               "Boundaries: " + (ao.disasterZoneBoundaries ?
                    "Lat " + ao.disasterZoneBoundaries.minLatitude.toFixed(6) + " to " + ao.disasterZoneBoundaries.maxLatitude.toFixed(6) + "\n" +
                    "Lon " + ao.disasterZoneBoundaries.minLongitude.toFixed(6) + " to " + ao.disasterZoneBoundaries.maxLongitude.toFixed(6) : "N/A") + "\n" +
                "Waypoints: " + (ao.waypoints ? ao.waypoints.length : 0)
@@ -566,17 +566,17 @@ Rectangle {
 
     function formatFlightLogSummary(summary) {
         if (!summary) return "No data"
-        var result = "Launch Location: " + (summary.launchLocation ? 
+        var result = "Launch Location: " + (summary.launchLocation ?
             summary.launchLocation.latitude.toFixed(6) + ", " + summary.launchLocation.longitude.toFixed(6) : "N/A") + "\n" +
-               "Recovery Location: " + (summary.recoveryLocation ? 
+               "Recovery Location: " + (summary.recoveryLocation ?
             summary.recoveryLocation.latitude.toFixed(6) + ", " + summary.recoveryLocation.longitude.toFixed(6) : "N/A") + "\n" +
                "Flight Duration: " + (summary.flightDuration ? summary.flightDuration.formatted : "N/A") + "\n" +
                "Distance Covered: " + (summary.distanceCovered ? summary.distanceCovered.formatted : "N/A") + "\n" +
-               "Altitude: " + (summary.altitudeProfile ? 
+               "Altitude: " + (summary.altitudeProfile ?
             summary.altitudeProfile.min.toFixed(1) + " - " + summary.altitudeProfile.max.toFixed(1) + " m (avg: " + summary.altitudeProfile.average.toFixed(1) + " m)" : "N/A") + "\n" +
-               "Speed: " + (summary.speedProfile ? 
+               "Speed: " + (summary.speedProfile ?
             summary.speedProfile.min.toFixed(1) + " - " + summary.speedProfile.max.toFixed(1) + " m/s (avg: " + summary.speedProfile.average.toFixed(1) + " m/s)" : "N/A")
-        
+
         // Add captured frames information
         if (summary.capturedFrames) {
             result += "\n\nCaptured Frames:\n"
@@ -584,18 +584,18 @@ Rectangle {
             result += "Descent Frames: " + summary.capturedFrames.descentFrames + "\n"
             result += "OFFBOARD Frames: " + summary.capturedFrames.offboardFrames
         }
-        
+
         return result
     }
 
     function formatEmergencyZones(zones) {
         if (!zones || !zones.zones) return "No emergency zones detected"
         return "Total Zones: " + zones.totalZones + "\n" +
-               "Critical: " + zones.criticalZones + ", High: " + zones.highZones + 
+               "Critical: " + zones.criticalZones + ", High: " + zones.highZones +
                ", Medium: " + zones.mediumZones + ", Low: " + zones.lowZones + "\n\n" +
                zones.zones.map(function(z) {
-                   return z.zoneId + ": " + z.severity + " - " + z.type + " at " + 
-                          z.coordinates.latitude.toFixed(6) + ", " + z.coordinates.longitude.toFixed(6) + 
+                   return z.zoneId + ": " + z.severity + " - " + z.type + " at " +
+                          z.coordinates.latitude.toFixed(6) + ", " + z.coordinates.longitude.toFixed(6) +
                           " (radius: " + z.radius + " m)"
                }).join("\n")
     }

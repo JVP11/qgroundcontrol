@@ -15,6 +15,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QRegularExpression>
 #include <QtGui/QFontDatabase>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QIcon>
 #include <QtNetwork/QNetworkProxyFactory>
 #include <QtQml/QQmlApplicationEngine>
@@ -87,15 +88,21 @@ QGCApplication::QGCApplication(int &argc, char *argv[], const QGCCommandLinePars
 #ifdef QGC_DAILY_BUILD
         // This gives daily builds their own separate settings space. Allowing you to use daily and stable builds
         // side by side without daily screwing up your stable settings.
-        applicationName = QStringLiteral("%1 Daily").arg(QGC_APP_NAME);
+        applicationName = QStringLiteral("%1").arg(QGC_APP_NAME);  // ASTHRA - no "Daily" suffix
 #else
         applicationName = QGC_APP_NAME;
 #endif
     }
     setApplicationName(applicationName);
+    setApplicationDisplayName(applicationName);
     setOrganizationName(QGC_ORG_NAME);
     setOrganizationDomain(QGC_ORG_DOMAIN);
     setApplicationVersion(QString(QGC_APP_VERSION_STR));
+
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+    // GNOME/Wayland use this for the top-bar app name (not the window title)
+    QGuiApplication::setDesktopFileName(QStringLiteral("asthra"));
+#endif
 
     // Set settings format
     QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -270,12 +277,13 @@ void QGCApplication::_initForNormalAppBoot()
     // Image provider for Optical Flow
     _qmlAppEngine->addImageProvider(_qgcImageProviderId, new QGCImageProvider());
 
+    // Window icon removed for ASTHRA branding
     // Set the window icon now that custom plugin has a chance to override it
 #ifdef Q_OS_LINUX
-    QUrl windowIcon = QUrl("qrc:/res/qgroundcontrol.ico");
-    windowIcon = _qmlAppEngine->interceptUrl(windowIcon, QQmlAbstractUrlInterceptor::UrlString);
+    // QUrl windowIcon = QUrl("qrc:/res/qgroundcontrol.ico");
+    // windowIcon = _qmlAppEngine->interceptUrl(windowIcon, QQmlAbstractUrlInterceptor::UrlString);
     // The interceptor needs "qrc:/path" but QIcon expects ":/path"
-    setWindowIcon(QIcon(":" + windowIcon.path()));
+    // setWindowIcon(QIcon(":" + windowIcon.path()));
 #endif
 
     // Safe to show popup error messages now that main window is created

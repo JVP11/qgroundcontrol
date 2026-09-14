@@ -202,7 +202,7 @@ public:
     int readyForSaveState(void) const;
 
     /// Sends the mission items to the specified vehicle
-    static void sendItemsToVehicle(Vehicle* vehicle, QmlObjectListModel* visualMissionItems);
+    Q_INVOKABLE static void sendItemsToVehicle(Vehicle* vehicle, QmlObjectListModel* visualMissionItems);
 
     bool loadTextFile(QFile& file, QString& errorString);
 

@@ -85,7 +85,7 @@ QtObject {
     function generateMissionOverview() {
         var startTime = missionLogger ? missionLogger.missionStartTime : new Date()
         var endTime = missionLogger ? missionLogger.missionEndTime : new Date()
-        
+
         var vehicleInfo = {
             id: activeVehicle ? activeVehicle.id : 0,
             type: activeVehicle ? activeVehicle.vehicleTypeString : "Unknown",
@@ -156,7 +156,7 @@ QtObject {
         var centerLat = (minLat + maxLat) / 2
         var centerLon = (minLon + maxLon) / 2
         var centerCoord = QtPositioning.coordinate(centerLat, centerLon)
-        
+
         var maxDistance = 0
         for (var j = 0; j < coordinates.length; j++) {
             var coord = QtPositioning.coordinate(coordinates[j].lat, coordinates[j].lon)
@@ -205,13 +205,13 @@ QtObject {
 
     function generateTerrainAssessment() {
         if (!telemetryLogger) return "Insufficient data"
-        
+
         var altProfile = telemetryLogger.getAltitudeProfile()
         if (!altProfile) return "Insufficient data"
 
         var terrainRoughness = "Unknown"
         var elevationRange = altProfile.max - altProfile.min
-        
+
         if (elevationRange < 50) terrainRoughness = "Flat"
         else if (elevationRange < 200) terrainRoughness = "Moderate"
         else terrainRoughness = "Mountainous"
@@ -342,7 +342,7 @@ QtObject {
                     var coord = QtPositioning.coordinate(pos.lat, pos.lon)
                     var zoneCoord = QtPositioning.coordinate(zone.latitude, zone.longitude)
                     var distance = coord.distanceTo(zoneCoord)
-                    
+
                     if (distance <= zone.radius) {
                         criticalTime += sampleInterval
                         break  // Count once per sample
@@ -416,7 +416,7 @@ QtObject {
     // ============================================================================
     function generateEmergencyZoneIdentification() {
         var zones = []
-        
+
         for (var i = 0; i < emergencyZones.length; i++) {
             var zone = emergencyZones[i]
             zones.push({
@@ -549,13 +549,13 @@ QtObject {
 
         // GPS analysis
         var gpsStats = analyzeGPSHealth(samples)
-        
+
         // Battery analysis
         var batteryProfile = telemetryLogger.getBatteryProfile()
-        
+
         // Link quality
         var linkQuality = telemetryLogger.getLinkQualityProfile()
-        
+
         // Failsafe events
         var failsafeEvents = getFailsafeEvents()
 
@@ -598,7 +598,7 @@ QtObject {
             }
         }
 
-        var avgSatellites = satelliteCounts.length > 0 ? 
+        var avgSatellites = satelliteCounts.length > 0 ?
             satelliteCounts.reduce(function(a, b) { return a + b; }, 0) / satelliteCounts.length : 0
         var avgHDOP = hdopValues.length > 0 ?
             hdopValues.reduce(function(a, b) { return a + b; }, 0) / hdopValues.length : 0
@@ -627,10 +627,10 @@ QtObject {
 
     function assessBatteryHealth(batteryProfile) {
         if (!batteryProfile) return "Unknown"
-        
+
         var minVolt = batteryProfile.minVoltage
         if (isNaN(minVolt)) return "Unknown"
-        
+
         if (minVolt < 10.5) return "Critical"
         if (minVolt < 11.0) return "Warning"
         return "Normal"
@@ -638,10 +638,10 @@ QtObject {
 
     function assessLinkStability(linkQuality) {
         if (!linkQuality || !linkQuality.messageLossRate) return "Unknown"
-        
+
         var avgLoss = linkQuality.messageLossRate.avg
         if (isNaN(avgLoss)) return "Unknown"
-        
+
         if (avgLoss < 1.0) return "Excellent"
         if (avgLoss < 5.0) return "Good"
         if (avgLoss < 10.0) return "Fair"
@@ -650,7 +650,7 @@ QtObject {
 
     function getFailsafeEvents() {
         if (!missionLogger) return []
-        
+
         var events = missionLogger.getEventLog()
         return events.filter(function(e) {
             return e.eventType === "FAILSAFE_ACTIVATED"
@@ -669,10 +669,10 @@ QtObject {
 
     function getEmergencyEvents() {
         if (!missionLogger) return []
-        
+
         var events = missionLogger.getEventLog()
         var emergencyTypes = ["FAILSAFE_ACTIVATED", "OFFBOARD_EXIT", "LINK_LOSS"]
-        
+
         return events.filter(function(e) {
             return emergencyTypes.indexOf(e.eventType) >= 0
         }).map(function(e) {
@@ -700,16 +700,16 @@ QtObject {
 
         // Analyze altitude violations
         var altViolations = detectAltitudeViolations(samples)
-        
+
         // Analyze speed violations
         var speedViolations = detectSpeedViolations(samples)
-        
+
         // Analyze battery critical zones
         var batteryCritical = detectBatteryCriticalZones(samples)
-        
+
         // Environmental hazards
         var environmentalHazards = analyzeEnvironmentalHazards(samples)
-        
+
         // Near-miss events
         var nearMisses = detectNearMissEvents()
 
@@ -781,7 +781,7 @@ QtObject {
 
     function getCommunicationLossEvents() {
         if (!missionLogger) return []
-        
+
         var events = missionLogger.getEventLog()
         return events.filter(function(e) {
             return e.data && (e.data.reason === "LINK_LOSS" || e.eventType === "LINK_LOSS")
@@ -790,12 +790,12 @@ QtObject {
 
     function calculateOverallRiskLevel(altViolations, speedViolations, batteryCritical, nearMisses) {
         var riskScore = 0
-        
+
         if (altViolations.count > 0) riskScore += 2
         if (speedViolations.count > 0) riskScore += 1
         if (batteryCritical.count > 0) riskScore += 3
         if (nearMisses.length > 0) riskScore += 5
-        
+
         if (riskScore >= 7) return "High"
         if (riskScore >= 4) return "Medium"
         if (riskScore >= 1) return "Low"
@@ -822,10 +822,10 @@ QtObject {
 
     function assessMissionSuccess() {
         if (!missionLogger) return "Unknown"
-        
+
         var events = missionLogger.getEventLog()
         var hasCriticalEvents = events.some(function(e) {
-            return e.eventType === "FAILSAFE_ACTIVATED" || 
+            return e.eventType === "FAILSAFE_ACTIVATED" ||
                    (e.data && e.data.reason === "LINK_LOSS")
         })
 
@@ -836,15 +836,15 @@ QtObject {
 
     function calculateCoverageCompleteness() {
         if (!telemetryLogger) return "Unknown"
-        
+
         var samples = telemetryLogger.getSamples()
         var ao = generateAreaOfOperations()
-        
+
         if (!ao) return "Unknown"
-        
+
         // Simple heuristic - would be more sophisticated in real implementation
         var coveragePercent = Math.min(100, (samples.length / 100) * 10)  // Placeholder calculation
-        
+
         return {
             percentage: coveragePercent,
             assessment: coveragePercent > 80 ? "Complete" : (coveragePercent > 50 ? "Adequate" : "Incomplete")
@@ -853,16 +853,16 @@ QtObject {
 
     function assessDataCompleteness() {
         if (!telemetryLogger) return "Unknown"
-        
+
         var samples = telemetryLogger.getSamples()
         var gpsCount = 0
         var batteryCount = 0
-        
+
         for (var i = 0; i < samples.length; i++) {
             if (samples[i].gps) gpsCount++
             if (samples[i].battery) batteryCount++
         }
-        
+
         var total = samples.length
         return {
             gpsData: (gpsCount / total) * 100,
@@ -888,14 +888,14 @@ QtObject {
                 immediateResponseRequired: z.severity === "Critical"
             }
         })
-        
+
         priorityZones.sort(function(a, b) { return a.priority - b.priority })
         return priorityZones
     }
 
     function generateRecommendations() {
         var recommendations = []
-        
+
         // Analyze emergency zones and generate recommendations
         var criticalZones = emergencyZones.filter(function(z) { return z.severity === "Critical" })
         if (criticalZones.length > 0) {
@@ -905,7 +905,7 @@ QtObject {
                 zones: criticalZones.map(function(z) { return { lat: z.latitude, lon: z.longitude } })
             })
         }
-        
+
         // Battery and system health recommendations
         var batteryProfile = telemetryLogger ? telemetryLogger.getBatteryProfile() : null
         if (batteryProfile && batteryProfile.minVoltage < 11.0) {
@@ -915,7 +915,7 @@ QtObject {
                 technical: true
             })
         }
-        
+
         // Coverage recommendations
         var coverage = calculateCoverageCompleteness()
         if (coverage.percentage < 80) {
@@ -925,7 +925,7 @@ QtObject {
                 operational: true
             })
         }
-        
+
         return recommendations
     }
 
@@ -981,7 +981,7 @@ QtObject {
     function generateDisasterAreaMap() {
         var ao = generateAreaOfOperations()
         var zones = generateEmergencyZoneIdentification()
-        
+
         return {
             boundaries: ao ? ao.disasterZoneBoundaries : null,
             emergencyZones: zones.zones,
@@ -997,7 +997,7 @@ QtObject {
         var hazards = emergencyZones.filter(function(z) {
             return z.type !== "survivor"
         })
-        
+
         return {
             survivors: survivors.map(function(s) {
                 return {
@@ -1021,7 +1021,7 @@ QtObject {
 
     function generateFlightLogs() {
         if (!missionLogger) return null
-        
+
         return {
             events: missionLogger.getEventLog().map(function(e) {
                 return {
@@ -1043,7 +1043,7 @@ QtObject {
 
     function generateTelemetryLogs() {
         if (!telemetryLogger) return null
-        
+
         var samples = telemetryLogger.getSamples()
         return {
             sampleCount: samples.length,
@@ -1063,11 +1063,11 @@ QtObject {
 
     function generateCapturedFrames() {
         if (!frameCapture) return null
-        
+
         var allFrames = frameCapture.getAllFrames()
         var descentFrames = frameCapture.getDescentFrames()
         var offboardFrames = frameCapture.getOffboardFrames()
-        
+
         return {
             totalFrames: allFrames.length,
             descentFrames: descentFrames.length,
@@ -1119,7 +1119,7 @@ QtObject {
         kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n'
         kml += '<Document>\n'
         kml += '<name>ASTHRA Disaster Mission Report</name>\n'
-        
+
         // Flight path
         if (report.section9_Outputs.disasterAreaMap && report.section9_Outputs.disasterAreaMap.flightPath) {
             kml += '<Placemark>\n'
@@ -1134,7 +1134,7 @@ QtObject {
             kml += '</LineString>\n'
             kml += '</Placemark>\n'
         }
-        
+
         // Emergency zones
         if (report.section4_EmergencyZoneIdentification && report.section4_EmergencyZoneIdentification.zones) {
             var zones = report.section4_EmergencyZoneIdentification.zones
@@ -1149,7 +1149,7 @@ QtObject {
                 kml += '</Placemark>\n'
             }
         }
-        
+
         kml += '</Document>\n'
         kml += '</kml>\n'
         return kml
@@ -1158,14 +1158,14 @@ QtObject {
     function exportCSV() {
         var report = generateFullReport()
         var csv = "Section,Field,Value\n"
-        
+
         // Mission Overview
         var overview = report.section1_MissionOverview
         csv += "Mission Overview,Disaster Type," + overview.disasterType + "\n"
         csv += "Mission Overview,Mission ID," + overview.missionId + "\n"
         csv += "Mission Overview,Start Time UTC," + overview.dateTimeUTC.start + "\n"
         csv += "Mission Overview,End Time UTC," + overview.dateTimeUTC.end + "\n"
-        
+
         // Emergency Zones
         if (report.section4_EmergencyZoneIdentification && report.section4_EmergencyZoneIdentification.zones) {
             csv += "\nEmergency Zones,Zone ID,Latitude,Longitude,Radius (m),Severity,Type\n"
@@ -1175,7 +1175,7 @@ QtObject {
                 csv += "Emergency Zones," + z.zoneId + "," + z.coordinates.latitude + "," + z.coordinates.longitude + "," + z.radius + "," + z.severity + "," + z.type + "\n"
             }
         }
-        
+
         return csv
     }
 
@@ -1185,7 +1185,7 @@ QtObject {
             type: "FeatureCollection",
             features: []
         }
-        
+
         // Flight path as LineString
         if (report.section9_Outputs.disasterAreaMap && report.section9_Outputs.disasterAreaMap.flightPath) {
             var coordinates = report.section9_Outputs.disasterAreaMap.flightPath.map(function(p) {
@@ -1203,7 +1203,7 @@ QtObject {
                 }
             })
         }
-        
+
         // Emergency zones as Points
         if (report.section4_EmergencyZoneIdentification && report.section4_EmergencyZoneIdentification.zones) {
             var zones = report.section4_EmergencyZoneIdentification.zones
@@ -1224,7 +1224,7 @@ QtObject {
                 })
             }
         }
-        
+
         return JSON.stringify(geoJson, null, 2)
     }
 
@@ -1233,10 +1233,10 @@ QtObject {
     // ============================================================================
     function generateMissionId() {
         var now = new Date()
-        return "ASTHRA-" + now.getFullYear() + 
-               String(now.getMonth() + 1).padStart(2, '0') + 
+        return "ASTHRA-" + now.getFullYear() +
+               String(now.getMonth() + 1).padStart(2, '0') +
                String(now.getDate()).padStart(2, '0') + "-" +
-               String(now.getHours()).padStart(2, '0') + 
+               String(now.getHours()).padStart(2, '0') +
                String(now.getMinutes()).padStart(2, '0')
     }
 
@@ -1249,8 +1249,8 @@ QtObject {
         var hours = Math.floor(seconds / 3600)
         var minutes = Math.floor((seconds % 3600) / 60)
         var secs = seconds % 60
-        return String(hours).padStart(2, '0') + ":" + 
-               String(minutes).padStart(2, '0') + ":" + 
+        return String(hours).padStart(2, '0') + ":" +
+               String(minutes).padStart(2, '0') + ":" +
                String(Math.floor(secs)).padStart(2, '0')
     }
 

@@ -12,6 +12,7 @@
 #include <QtCore/QList>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QVariantMap>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtQmlIntegration/QtQmlIntegration>
 
@@ -29,6 +30,11 @@ class ShapeFileHelper : public QObject
 public:
     static QStringList fileDialogKMLFilters();
     static QStringList fileDialogKMLOrSHPFilters();
+
+    /// Load a polygon from KML/SHP for QML. Returns { ok, error, path }.
+    Q_INVOKABLE static QVariantMap loadPolygonQml(const QString &file);
+    /// Write UTF-8 text into a temp file. Returns absolute path, or empty on failure.
+    Q_INVOKABLE static QString writeTempText(const QString &fileName, const QString &text);
 
     enum class ShapeType {
         Polygon,

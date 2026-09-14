@@ -194,15 +194,55 @@ Popup {
         acceptButton.enabled = false
     }
 
+    // Military-Industrial Dialog Background
     Rectangle {
         x:              mainLayout.x - _contentMargin
         y:              mainLayout.y - _contentMargin
         width:          mainLayout.width + _contentMargin * 2
         height:         mainLayout.height + _contentMargin * 2
         color:          _qgcPal.windowShade
-        radius:         root.padding / 2
+        radius:         2  // Sharp corners for tactical look
         border.width:   1
-        border.color:   _qgcPal.windowShadeLight
+        border.color:   _qgcPal.buttonBorder
+
+        // Top accent line
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 2
+            color: _qgcPal.buttonBorder
+        }
+
+        // Corner accents for military-industrial aesthetic
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            width: 12
+            height: 2
+            color: _qgcPal.primaryButton
+        }
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            width: 2
+            height: 12
+            color: _qgcPal.primaryButton
+        }
+        Rectangle {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            width: 12
+            height: 2
+            color: _qgcPal.primaryButton
+        }
+        Rectangle {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            width: 2
+            height: 12
+            color: _qgcPal.primaryButton
+        }
     }
 
     ColumnLayout {

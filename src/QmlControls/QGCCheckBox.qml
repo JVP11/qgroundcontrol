@@ -43,34 +43,47 @@ CheckBox {
         color:              control.textColor
     }
 
+    // Military-Industrial Checkbox Indicator
     indicator:  Rectangle {
         implicitWidth:  ScreenTools.implicitCheckBoxHeight
         implicitHeight: implicitWidth
         x:              control.leftPadding
         y:              parent.height / 2 - height / 2
-        color:          control.enabled ? "white" : "transparent"
-        border.color:   qgcPal.buttonBorder
+        color:          control.enabled ? qgcPal.textField : "transparent"
+        border.color:   control.checked ? qgcPal.buttonHighlight : (control.hovered ? qgcPal.buttonBorder : Qt.darker(qgcPal.windowShadeLight, 1.2))
         border.width:   1
-        radius:         ScreenTools.defaultBorderRadius
+        radius:         2  // Sharp corners for tactical look
         opacity:        control.checkedState === Qt.PartiallyChecked ? 0.5 : 1
 
+        // Hover highlight
         Rectangle {
             anchors.fill:   parent
             color:          qgcPal.buttonHighlight
-            opacity:        control.hovered ? .2 : 0
+            opacity:        control.hovered ? 0.15 : 0
             radius:         parent.radius
+
+            Behavior on opacity {
+                NumberAnimation { duration: 100 }
+            }
         }
 
-        QGCColoredImage {
-            source:             "/qmlimages/checkbox-check.svg"
-            color:              qgcPal.buttonHighlight
-            mipmap:             true
-            fillMode:           Image.PreserveAspectFit
-            width:              parent.implicitWidth * 0.75
-            height:             width
-            sourceSize.height:  height
+        // Check mark with tactical styling
+        Rectangle {
             visible:            control.checked
             anchors.centerIn:   parent
+            width:              parent.implicitWidth * 0.6
+            height:             width
+            color:              qgcPal.buttonHighlight
+            radius:             1
+
+            // Inner detail for depth
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.4
+                height: width
+                color: Qt.darker(qgcPal.buttonHighlight, 1.3)
+                radius: 1
+            }
         }
     }
 }

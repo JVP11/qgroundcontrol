@@ -12,11 +12,11 @@ include(BuildConfig)
 # Application Metadata
 # ============================================================================
 
-set(QGC_APP_NAME "QGroundControl" CACHE STRING "Application name")
-set(QGC_APP_COPYRIGHT "Copyright (c) 2025 QGroundControl. All rights reserved." CACHE STRING "Copyright notice")
-set(QGC_APP_DESCRIPTION "Open Source Ground Control App" CACHE STRING "Application description")
-set(QGC_ORG_NAME "QGroundControl" CACHE STRING "Organization name")
-set(QGC_ORG_DOMAIN "qgroundcontrol.com" CACHE STRING "Organization domain")
+set(QGC_APP_NAME "ASTHRA" CACHE STRING "Application name")
+set(QGC_APP_COPYRIGHT "Copyright (c) 2025 ASTHRA. All rights reserved." CACHE STRING "Copyright notice")
+set(QGC_APP_DESCRIPTION "Advanced Strategic Tactical Humanitarian Response Analyser" CACHE STRING "Application description")
+set(QGC_ORG_NAME "ASTHRA" CACHE STRING "Organization name")
+set(QGC_ORG_DOMAIN "asthra.com" CACHE STRING "Organization domain")
 set(QGC_PACKAGE_NAME "org.mavlink.qgroundcontrol" CACHE STRING "Package identifier")
 
 # Settings version - increment to clear stored settings on next boot after incompatible changes

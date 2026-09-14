@@ -26,6 +26,7 @@ Item {
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
+    // Military-Industrial: Deep gunmetal status background
     property color  _mainStatusBGColor: qgcPal.brandingPurple
     property real   _leftRightMargin:   ScreenTools.defaultFontPixelWidth * 0.75
     property var    _guidedController:  globals.guidedControllerFlyView
@@ -84,13 +85,14 @@ Item {
                         height:     parent.height
                         spacing:    0
 
-                        QGCToolBarButton {
-                            id:                 qgcButton
-                            Layout.fillHeight:  true
-                            icon.source:        "/res/QGCLogoFull.svg"
-                            logo:               true
-                            onClicked:          mainWindow.showToolSelectDialog()
-                        }
+                        // QGC Logo removed for ASTHRA branding
+                        // QGCToolBarButton {
+                        //     id:                 qgcButton
+                        //     Layout.fillHeight:  true
+                        //     icon.source:        "/res/QGCLogoFull.svg"
+                        //     logo:               true
+                        //     onClicked:          mainWindow.showToolSelectDialog()
+                        // }
 
                         MainStatusIndicator {
                             id:                 mainStatusIndicator

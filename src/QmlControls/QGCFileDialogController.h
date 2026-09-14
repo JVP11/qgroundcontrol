@@ -46,4 +46,12 @@ public:
     /// Returns the standard QGC location portion of a fully qualified folder path.
     /// Example: "/Users/Don/Document/QGroundControl/Missions" returns "QGroundControl/Missions"
     Q_INVOKABLE static QString fullFolderPathToShortMobilePath(const QString &fullFolderPath);
+
+    /// Write text content to a file
+    /// Returns true on success, false on failure
+    Q_INVOKABLE static bool writeTextFile(const QString &filePath, const QString &content);
+
+    /// Show save file dialog and return selected file path
+    /// Returns empty string if cancelled
+    Q_INVOKABLE static QString saveFileDialog(const QString &title, const QString &defaultName, const QString &nameFilters);
 };

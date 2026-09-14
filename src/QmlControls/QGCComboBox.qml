@@ -120,17 +120,38 @@ T.ComboBox {
         color:                      qgcPal.buttonText
     }
 
+    // Military-Industrial ComboBox Background
     background: Rectangle {
         color:          qgcPal.button
-        border.color:   qgcPal.buttonBorder
-        border.width:   _showBorder ? 1 : 0
-        radius:         ScreenTools.defaultBorderRadius
+        border.color:   _showHighlight ? qgcPal.buttonHighlight : (control.hovered ? qgcPal.buttonBorder : Qt.darker(qgcPal.windowShadeLight, 1.2))
+        border.width:   1
+        radius:         2  // Sharp corners for tactical look
+
+        // Tactical gradient
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(qgcPal.button, 1.1) }
+            GradientStop { position: 1.0; color: Qt.darker(qgcPal.button, 1.1) }
+        }
 
         Rectangle {
             anchors.fill:   parent
             color:          qgcPal.buttonHighlight
-            opacity:        _showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0
+            opacity:        _showHighlight ? 0.9 : control.enabled && control.hovered ? 0.15 : 0
             radius:         parent.radius
+
+            Behavior on opacity {
+                NumberAnimation { duration: 100 }
+            }
+        }
+
+        // Right edge accent
+        Rectangle {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 2
+            color: qgcPal.buttonBorder
+            opacity: 0.5
         }
     }
 

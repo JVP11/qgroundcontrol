@@ -80,6 +80,9 @@ public:
 
     Q_INVOKABLE void loadFromVehicle(void);
     Q_INVOKABLE void sendToVehicle(void);
+    /// Sends the current mission to a specific vehicle (for dual-vehicle operations)
+    /// @param vehicle The vehicle to send the mission to
+    Q_INVOKABLE void sendMissionToVehicle(Vehicle* vehicle);
     Q_INVOKABLE void loadFromFile(const QString& filename);
     Q_INVOKABLE void saveToCurrent();
     Q_INVOKABLE void saveToFile(const QString& filename);

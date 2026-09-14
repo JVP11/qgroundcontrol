@@ -82,13 +82,24 @@ TextField {
         }
     }
 
+    // Military-Industrial Text Field Background
     background: Rectangle {
-        border.width:   control.validationError ? 2 : (qgcPal.globalTheme === QGCPalette.Light ? 1 : 0)
-        border.color:   control.validationError ? qgcPal.colorRed : qgcPal.buttonBorder
-        radius:         ScreenTools.defaultBorderRadius
+        border.width:   control.validationError ? 2 : 1
+        border.color:   control.validationError ? qgcPal.colorRed : (control.activeFocus ? qgcPal.buttonBorder : Qt.darker(qgcPal.windowShadeLight, 1.2))
+        radius:         2  // Sharp corners for tactical look
         color:          qgcPal.textField
         implicitWidth:  ScreenTools.implicitTextFieldWidth
         implicitHeight: ScreenTools.implicitTextFieldHeight
+
+        // Focus indicator - tactical cyan line at bottom
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 2
+            color: qgcPal.buttonBorder
+            visible: control.activeFocus
+        }
 
         RowLayout {
             id:                     unitsHelpLayout

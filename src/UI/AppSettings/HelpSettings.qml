@@ -32,7 +32,7 @@ Rectangle {
             id:         grid
             columns:    2
 
-            QGCLabel { text: qsTr("QGroundControl User Guide") }
+            QGCLabel { text: qsTr("ASTHRA User Guide") }
             QGCLabel {
                 linkColor:          qgcPal.text
                 text:               "<a href=\"https://docs.qgroundcontrol.com\">https://docs.qgroundcontrol.com</a>"
@@ -53,7 +53,7 @@ Rectangle {
                 onLinkActivated:    (link) => Qt.openUrlExternally(link)
             }
 
-            QGCLabel { text: qsTr("QGroundControl Discord Channel") }
+            QGCLabel { text: qsTr("ASTHRA / QGC Community Discord") }
             QGCLabel {
                 linkColor:          qgcPal.text
                 text:               "<a href=\"https://discord.com/channels/1022170275984457759/1022185820683255908\">https://discord.com/channels/1022170275984457759/1022185820683255908</a>"

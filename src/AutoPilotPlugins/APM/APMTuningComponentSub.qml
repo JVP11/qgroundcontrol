@@ -74,21 +74,21 @@ SetupPage {
                     anchors.top:        parent.top
                     spacing:            _margins*1.5
 
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_ANG_PIT_P") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_ANG_RLL_P") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_ANG_YAW_P") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_P") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_I") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_IMAX") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_D") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_P") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_I") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_IMAX") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_D") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_P") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_I") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_IMAX") }
-                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_D") }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_ANG_PIT_P", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_ANG_RLL_P", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_ANG_YAW_P", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_P", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_I", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_IMAX", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_PIT_D", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_P", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_I", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_IMAX", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_RLL_D", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_P", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_I", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_IMAX", false) }
+                    FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_D", false) }
 
                 } // Column - Position Controller Parameters
             } // Rectangle - Position Controller Parameters
@@ -118,9 +118,9 @@ SetupPage {
                         FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_VELZ_P") }
                         FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_D") }
                         FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_FILT") }
-                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_I") }
-                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_IMAX") }
-                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_P") }
+                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_I", false) }
+                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_IMAX", false) }
+                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_P", false) }
 
                     } // Column - VEL parameters
                 }
@@ -143,9 +143,9 @@ SetupPage {
                         FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_FLTD") }
                         FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_FLTE") }
                         FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_FLTT") }
-                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_I") }
-                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_IMAX") }
-                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_P") }
+                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_I", false) }
+                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_IMAX", false) }
+                        FactTextFieldSlider2 { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_P", false) }
 
                     } // Column - VEL parameters
                 }

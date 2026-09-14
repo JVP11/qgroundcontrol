@@ -27,6 +27,9 @@ import QGroundControl.Viewer3D
 Item {
     id: _root
 
+    /// ASTHRA shell provides its own top strip; hide QGC fly toolbar and keep map full-screen.
+    property bool useAsthraChrome: false
+
     // These should only be used by MainRootWindow
     property var planController:    _planController
     property var guidedController:  _guidedController
@@ -68,9 +71,42 @@ Item {
         toolbar.dropMainStatusIndicatorTool();
     }
 
+    function ensureMapFullScreen() {
+        if (!mapControl || !mapControl.pipState) {
+            return
+        }
+        mapControl.pipState.state = mapControl.pipState.fullState
+        if (videoControl && videoControl.pipState) {
+            videoControl.pipState.state = videoControl.pipState.pipState
+        }
+        QGroundControl.saveBoolGlobalSetting("MainFlyWindowIsMap", true)
+        if (mapControl.mapReady) {
+            mapControl.updateActiveMapType()
+            mapControl.ensureMapHasCenter()
+        }
+    }
+
+    onUseAsthraChromeChanged: if (useAsthraChrome) {
+        ensureMapFullScreen()
+    }
+
+    onVisibleChanged: {
+        if (visible && useAsthraChrome) {
+            ensureMapFullScreen()
+        }
+    }
+
+    Timer {
+        id:                 _asthraMapTimer
+        interval:           250
+        repeat:             false
+        running:            useAsthraChrome && visible
+        onTriggered:        ensureMapFullScreen()
+    }
+
     QGCToolInsets {
         id:                     _toolInsets
-        topEdgeLeftInset:       toolbar.height
+        topEdgeLeftInset:       useAsthraChrome ? 0 : toolbar.height
         topEdgeCenterInset:     topEdgeLeftInset
         topEdgeRightInset:      topEdgeLeftInset
         leftEdgeBottomInset:    _pipView.leftEdgeBottomInset
@@ -86,7 +122,8 @@ Item {
             planMasterController:   _planController
             rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
             pipView:                _pipView
-            pipMode:                !_mainWindowIsMap
+            pipMode:                useAsthraChrome ? false : !_mainWindowIsMap
+            z:                      0
             toolInsets:             customOverlay.totalToolInsets
             mapName:                "FlightDisplayView"
             enabled:                !viewer3DWindow.isOpen
@@ -95,6 +132,7 @@ Item {
         FlyViewVideo {
             id:         videoControl
             pipView:    _pipView
+            z:          1
         }
 
         PipView {
@@ -102,10 +140,11 @@ Item {
             anchors.left:           parent.left
             anchors.bottom:         parent.bottom
             anchors.margins:        _toolsMargin
+            forceMapFull:           useAsthraChrome
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
             item1:                  mapControl
-            item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
-            show:                   QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.fullScreen &&
+            item2:                  (!useAsthraChrome && QGroundControl.videoManager.hasVideo) ? videoControl : null
+            show:                   !useAsthraChrome && QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.fullScreen &&
                                         (videoControl.pipState.state === videoControl.pipState.pipState || mapControl.pipState.state === mapControl.pipState.pipState)
             z:                      QGroundControl.zOrderWidgets
 
@@ -120,7 +159,7 @@ Item {
             anchors.left:           parent.left
             anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
             anchors.margins:        _widgetMargin
-            anchors.topMargin:      toolbar.height + _widgetMargin
+            anchors.topMargin:      (useAsthraChrome ? 0 : toolbar.height) + _widgetMargin
             z:                      _fullItemZorder + 2 // we need to add one extra layer for map 3d viewer (normally was 1)
             parentToolInsets:       _toolInsets
             mapControl:             _mapControl
@@ -161,7 +200,7 @@ Item {
             anchors.right:      parent.right
             anchors.top:        parent.top
             anchors.bottom:     parent.bottom
-            anchors.topMargin:  toolbar.height
+            anchors.topMargin:  useAsthraChrome ? 0 : toolbar.height
             z:                  QGroundControl.zOrderTopMost
             visible:            false
         }
@@ -187,6 +226,6 @@ Item {
         id:                 toolbar
         guidedValueSlider:  _guidedValueSlider
         utmspSliderTrigger: utmspSendActTrigger
-        visible:            !QGroundControl.videoManager.fullScreen
+        visible:            !useAsthraChrome && !QGroundControl.videoManager.fullScreen
     }
 }

@@ -251,10 +251,21 @@ void SerialWorker::connectToPort()
     if (!_port->open(QIODevice::ReadWrite)) {
         qCWarning(SerialLinkLog) << "Opening port" << _port->portName() << "failed:" << _port->errorString();
 
-        // If auto-connect is enabled, we don't want to emit an error for PermissionError from devices already in use
-        if (!_errorEmitted && (!_serialConfig->isAutoConnect() || _port->error() != QSerialPort::PermissionError)) {
+        // If auto-connect is enabled, suppress errors for PermissionError and ResourceError (port doesn't exist/inaccessible)
+        // Only show errors for manual connections
+        if (!_errorEmitted && !_serialConfig->isAutoConnect()) {
             emit errorOccurred(tr("Could not open port: %1").arg(_port->errorString()));
             _errorEmitted = true;
+        } else if (!_errorEmitted && _serialConfig->isAutoConnect() &&
+                   _port->error() != QSerialPort::PermissionError &&
+                   _port->error() != QSerialPort::ResourceError) {
+            // Only emit error for auto-connect if it's not a permission or resource error
+            emit errorOccurred(tr("Could not open port: %1").arg(_port->errorString()));
+            _errorEmitted = true;
+        } else if (_serialConfig->isAutoConnect() &&
+                   (_port->error() == QSerialPort::PermissionError || _port->error() == QSerialPort::ResourceError)) {
+            // Silently suppress auto-connect errors for non-existent or inaccessible ports
+            qCDebug(SerialLinkLog) << "Suppressing auto-connect error for port:" << _port->portName() << "error:" << _port->errorString();
         }
 
         _onPortDisconnected();
@@ -366,8 +377,13 @@ void SerialWorker::_onPortErrorOccurred(QSerialPort::SerialPortError portError)
         qCDebug(SerialLinkLog) << "About to open port" << _port->portName();
         return;
     case QSerialPort::ResourceError:
-        // We get this when a usb cable is unplugged
-        // Fallthrough
+        // We get this when a usb cable is unplugged or port doesn't exist
+        // For auto-connect, silently ignore ResourceError (port doesn't exist)
+        if (_serialConfig->isAutoConnect()) {
+            qCDebug(SerialLinkLog) << "Suppressing ResourceError for auto-connect on port:" << _port->portName();
+            return;
+        }
+        // Fallthrough for manual connections
     case QSerialPort::PermissionError:
         if (_serialConfig->isAutoConnect()) {
             return;
@@ -477,7 +493,15 @@ void SerialLink::_onDisconnected()
 void SerialLink::_onErrorOccurred(const QString &errorString)
 {
     qCWarning(SerialLinkLog) << "Communication error:" << errorString;
-    emit communicationError(tr("Serial Link Error"), tr("Link %1: (Port: %2) %3").arg(_serialConfig->name(), _serialConfig->portName(), errorString));
+    // Don't show error dialog for auto-connect failures on non-existent ports
+    // Only show errors for manual connections or critical issues
+    if (!_serialConfig->isAutoConnect() ||
+        (!errorString.contains("Input/output error") && !errorString.contains("ResourceError"))) {
+        emit communicationError(tr("Serial Link Error"), tr("Link %1: (Port: %2) %3").arg(_serialConfig->name(), _serialConfig->portName(), errorString));
+    } else {
+        // Log silently for auto-connect failures on non-existent ports
+        qCDebug(SerialLinkLog) << "Suppressing auto-connect error for non-existent port:" << _serialConfig->portName();
+    }
 }
 
 void SerialLink::_onDataReceived(const QByteArray &data)

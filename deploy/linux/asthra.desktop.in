@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ASTHRA
+GenericName=Ground Control Station
+Comment=@QGC_APP_DESCRIPTION@
+Icon=ASTHRA
+Exec=ASTHRA
+Terminal=false
+Categories=Qt;Utility;Maps
+StartupWMClass=ASTHRA

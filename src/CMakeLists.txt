@@ -61,6 +61,9 @@ add_subdirectory(Android)
 # Qt plugins
 add_subdirectory(QtLocationPlugin)
 
+# ASTHRA Swarm Backend
+add_subdirectory(SwarmBackend)
+
 # ============================================================================
 # Main Application Sources
 # ============================================================================
@@ -131,6 +134,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         # QGC Modules
         AnalyzeViewModule
         AppSettingsModule
+        ASTHRAModule
         AutoPilotPluginsCommonModule
         FactControlsModule
         FirstRunPromptDialogsModule
@@ -138,6 +142,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         FlightMapModule
         QGroundControlControlsModule
         QGroundControlModule
+        SwarmBackendModule
         ToolbarModule
         UTMSPModule
         VehicleSetupModule

@@ -12,6 +12,11 @@
 #include "SHPFileHelper.h"
 #include "QGCLoggingCategory.h"
 
+#include <QtCore/QVariant>
+#include <QtCore/QFile>
+#include <QtCore/QDir>
+#include <QtCore/QStandardPaths>
+
 QGC_LOGGING_CATEGORY(ShapeFileHelperLog, "Utilities.ShapeFileHelper")
 
 bool ShapeFileHelper::_fileIsKML(const QString &file, QString &errorString)
@@ -84,6 +89,40 @@ bool ShapeFileHelper::loadPolylineFromFile(const QString &file, QList<QGeoCoordi
     default:
         return false;
     }
+}
+
+QVariantMap ShapeFileHelper::loadPolygonQml(const QString &file)
+{
+    QVariantMap result;
+    QList<QGeoCoordinate> vertices;
+    QString errorString;
+    const bool ok = loadPolygonFromFile(file, vertices, errorString);
+    QVariantList path;
+    path.reserve(vertices.size());
+    for (const QGeoCoordinate &coord : vertices) {
+        path.append(QVariant::fromValue(coord));
+    }
+    result.insert(QStringLiteral("ok"), ok);
+    result.insert(QStringLiteral("error"), errorString);
+    result.insert(QStringLiteral("path"), path);
+    return result;
+}
+
+QString ShapeFileHelper::writeTempText(const QString &fileName, const QString &text)
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (dir.isEmpty() || fileName.isEmpty()) {
+        return {};
+    }
+    QDir().mkpath(dir);
+    const QString path = dir + QLatin1Char('/') + fileName;
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        return {};
+    }
+    file.write(text.toUtf8());
+    file.close();
+    return path;
 }
 
 QStringList ShapeFileHelper::fileDialogKMLFilters()

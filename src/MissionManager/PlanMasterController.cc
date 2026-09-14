@@ -328,6 +328,38 @@ void PlanMasterController::sendToVehicle(void)
     }
 }
 
+void PlanMasterController::sendMissionToVehicle(Vehicle* vehicle)
+{
+    if (!vehicle) {
+        qCWarning(PlanMasterControllerLog) << "PlanMasterController::sendMissionToVehicle called with null vehicle";
+        return;
+    }
+
+    SharedLinkInterfacePtr sharedLink = vehicle->vehicleLinkManager()->primaryLink().lock();
+    if (sharedLink) {
+        if (sharedLink->linkConfiguration()->isHighLatency()) {
+            qgcApp()->showAppMessage(tr("Upload not supported on high latency links."));
+            return;
+        }
+    } else {
+        // Vehicle is shutting down
+        qCWarning(PlanMasterControllerLog) << "PlanMasterController::sendMissionToVehicle: Vehicle link not available";
+        return;
+    }
+
+    // Check if the target vehicle's mission manager is busy (not the plan view's sync status)
+    if (vehicle->missionManager() && vehicle->missionManager()->inProgress()) {
+        qCWarning(PlanMasterControllerLog) << "PlanMasterController::sendMissionToVehicle: Target vehicle mission manager is busy";
+        return;
+    }
+
+    qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendMissionToVehicle sending to vehicle" << vehicle->id();
+    qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendMissionToVehicle visualItems count:" << _missionController.visualItems()->count();
+    // Use the static sendItemsToVehicle method to send to the specified vehicle
+    MissionController::sendItemsToVehicle(vehicle, _missionController.visualItems());
+    qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendMissionToVehicle: MissionController::sendItemsToVehicle called";
+}
+
 void PlanMasterController::loadFromFile(const QString& filename)
 {
     QString errorString;

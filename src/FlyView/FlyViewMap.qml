@@ -39,7 +39,7 @@ FlightMap {
     property var    _geoFenceController:        planMasterController.geoFenceController
     property var    _rallyPointController:      planMasterController.rallyPointController
     property var    _activeVehicleCoordinate:   _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
-    property real   _toolButtonTopMargin:       parent.height - mainWindow.height + (ScreenTools.defaultFontPixelHeight / 2)
+    property real   _toolButtonTopMargin:       Math.max(0, parent.height - mainWindow.height) + (ScreenTools.defaultFontPixelHeight / 2)
     property real   _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     property var    _flyViewSettings:           QGroundControl.settingsManager.flyViewSettings
     property bool   _keepMapCenteredOnVehicle:  _flyViewSettings.keepMapCenteredOnVehicle.rawValue
@@ -247,7 +247,7 @@ FlightMap {
     // Add trajectory lines for all vehicles on the map
     Repeater {
         model: QGroundControl.multiVehicleManager.vehicles
-        
+
         MapPolyline {
             id:         trajectoryPolyline
             line.width: 3

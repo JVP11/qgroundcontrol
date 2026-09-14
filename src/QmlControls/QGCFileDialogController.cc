@@ -114,3 +114,27 @@ QString QGCFileDialogController::urlToLocalFile(QUrl url)
 
     return url.toString();
 }
+
+bool QGCFileDialogController::writeTextFile(const QString &filePath, const QString &content)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qCWarning(QGCFileDialogControllerLog) << "Failed to open file for writing:" << filePath << file.errorString();
+        return false;
+    }
+
+    QTextStream out(&file);
+    out << content;
+    file.close();
+
+    qCDebug(QGCFileDialogControllerLog) << "Successfully wrote" << content.length() << "characters to" << filePath;
+    return true;
+}
+
+QString QGCFileDialogController::saveFileDialog(const QString &title, const QString &defaultName, const QString &nameFilters)
+{
+    // This is a placeholder - actual file dialog should be shown from QML
+    // QML FileDialog should be used, this just returns the path format
+    qCDebug(QGCFileDialogControllerLog) << "saveFileDialog called - use QML FileDialog instead";
+    return QString();
+}

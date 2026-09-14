@@ -13,12 +13,15 @@ import QtQuick.Controls
 import QGroundControl
 import QGroundControl.Controls
 
+/// Military-Industrial Tool Strip
+/// Angular design with tactical styling
 Rectangle {
     id:         _root
     color:      qgcPal.windowTransparent
     width:      ScreenTools.defaultFontPixelWidth * 7
     height:     Math.min(maxHeight, toolStripColumn.height + (flickable.anchors.margins * 2))
-    radius:     ScreenTools.defaultFontPixelWidth / 2
+    border.width: 1
+    border.color: Qt.darker(qgcPal.windowShadeLight, 1.2)
 
     property alias  model:              repeater.model
     property real   maxHeight           ///< Maximum height for control, determines whether text is hidden to make control shorter
@@ -35,6 +38,15 @@ Rectangle {
     }
 
     signal dropped(int index)
+
+    // Left accent bar for military styling
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 2
+        color: qgcPal.buttonBorder
+    }
 
     DeadMouseArea {
         anchors.fill: parent

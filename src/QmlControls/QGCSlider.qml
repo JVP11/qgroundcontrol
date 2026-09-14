@@ -22,6 +22,7 @@ Slider {
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
 
+    // Military-Industrial Slider Track
     background: Rectangle {
         x: control.horizontal ? control.leftPadding : control.leftPadding + control.availableWidth / 2 - width / 2
         y: control.horizontal ? control.topPadding + control.availableHeight / 2 - height / 2 : control.topPadding
@@ -29,12 +30,22 @@ Slider {
         implicitHeight: control.horizontal ? control._barHeight : control._implicitBarLength
         width: control.horizontal ? control.availableWidth : implicitWidth
         height: control.horizontal ? implicitHeight : control.availableHeight
-        radius: control._barHeight / 2
-        color: qgcPal.button
+        radius: 1  // Sharp corners for tactical look
+        color: qgcPal.windowShadeDark
         border.width: 1
-        border.color: qgcPal.buttonText
+        border.color: Qt.darker(qgcPal.windowShadeLight, 1.2)
+
+        // Filled portion (tactical cyan)
+        Rectangle {
+            width: control.horizontal ? control.visualPosition * parent.width : parent.width
+            height: control.horizontal ? parent.height : control.visualPosition * parent.height
+            radius: 1
+            color: qgcPal.buttonBorder
+            opacity: 0.7
+        }
     }
 
+    // Military-Industrial Slider Handle
     handle: Rectangle {
         x: control.horizontal ?
                control.leftPadding + control.visualPosition * (control.availableWidth - width) :
@@ -45,11 +56,20 @@ Slider {
         implicitWidth: _radius * 2
         implicitHeight: _radius * 2
         color: qgcPal.button
-        border.color: qgcPal.buttonText
-        border.width: 1
-        radius: _radius
+        border.color: control.pressed ? qgcPal.buttonHighlight : qgcPal.buttonBorder
+        border.width: 2
+        radius: 2  // Sharp corners
 
         property real _radius: ScreenTools.defaultFontPixelHeight / 2
+
+        // Inner detail for depth
+        Rectangle {
+            anchors.centerIn: parent
+            width: parent.width * 0.4
+            height: parent.height * 0.4
+            color: qgcPal.buttonBorder
+            radius: 1
+        }
 
         Label {
             text: control.value.toFixed(control.to <= 1 ? 1 : 0)
@@ -57,7 +77,12 @@ Slider {
             anchors.centerIn: parent
             font.family: ScreenTools.normalFontFamily
             font.pointSize: ScreenTools.smallFontPointSize
+            font.weight: Font.DemiBold
             color: qgcPal.buttonText
+        }
+
+        Behavior on border.color {
+            ColorAnimation { duration: 100 }
         }
     }
 

@@ -25,7 +25,7 @@ DelayButton {
 
     property alias wrapMode:            text.wrapMode
     property alias horizontalAlignment: text.horizontalAlignment
-    property alias backgroundColor:     backRect.color
+    property color backgroundColor:     "transparent"  // Custom background color (transparent = use default)
     property alias textColor:           text.color
 
     property bool   _showHighlight:     enabled && pressed
@@ -67,7 +67,7 @@ DelayButton {
         implicitHeight: ScreenTools.implicitButtonHeight
         border.width:   showBorder ? 1 : 0
         border.color:   qgcPal.buttonBorder
-        color:          control._showHighlight ? qgcPal.buttonHighlight : qgcPal.button
+        color:          backgroundColor !== "transparent" ? backgroundColor : (control._showHighlight ? qgcPal.buttonHighlight : qgcPal.button)
 
         QGCColoredImage {
             anchors.topMargin:      _sliderIndicatorMargin

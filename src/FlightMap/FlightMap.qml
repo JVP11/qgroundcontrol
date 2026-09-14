@@ -92,6 +92,58 @@ Map {
                 return
             }
         }
+
+        // Saved provider/type missing — prefer Bing Road (Hybrid fails at high zoom)
+        for (var j = 0; j < _map.supportedMapTypes.length; j++) {
+            if (_map.supportedMapTypes[j].name === "Bing Road") {
+                _map.activeMapType = _map.supportedMapTypes[j]
+                return
+            }
+        }
+        var fallbacks = ["Esri World Street", "Bing Satellite", "Street Map"]
+        for (var k = 0; k < fallbacks.length; k++) {
+            for (var n = 0; n < _map.supportedMapTypes.length; n++) {
+                if (fallbacks[k] === _map.supportedMapTypes[n].name) {
+                    _map.activeMapType = _map.supportedMapTypes[n]
+                    return
+                }
+            }
+        }
+        if (_map.supportedMapTypes.length > 0) {
+            _map.activeMapType = _map.supportedMapTypes[0]
+        }
+    }
+
+    function clampZoomLevel() {
+        var isBing = _map.activeMapType && _map.activeMapType.name.indexOf("Bing") >= 0
+        var maxZoom = isBing ? 15 : 19
+        var minZoom = 3
+        var z = Math.round(_map.zoomLevel)
+        if (z > maxZoom) {
+            z = maxZoom
+        } else if (z < minZoom) {
+            z = minZoom
+        }
+        if (Math.abs(_map.zoomLevel - z) > 0.01) {
+            _map.zoomLevel = z
+            QGroundControl.flightMapZoom = z
+        }
+    }
+
+    function ensureMapHasCenter() {
+        clampZoomLevel()
+        if (!_map.center || !_map.center.isValid) {
+            var vehicle = _activeVehicle
+            if (vehicle && vehicle.coordinate && vehicle.coordinate.isValid) {
+                _map.center = vehicle.coordinate
+            } else {
+                _map.center = QtPositioning.coordinate(37.7749, -122.4194)
+            }
+            if (_map.zoomLevel < 12) {
+                _map.zoomLevel = 12
+                QGroundControl.flightMapZoom = 12
+            }
+        }
     }
 
     on_ActiveVehicleCoordinateChanged: _possiblyCenterToVehiclePosition()
@@ -99,6 +151,7 @@ Map {
     onMapReadyChanged: {
         if (_map.mapReady) {
             updateActiveMapType()
+            ensureMapHasCenter()
             _possiblyCenterToVehiclePosition()
         }
     }
@@ -128,6 +181,8 @@ Map {
         onActiveChanged: {
             if (active) {
                 pinchStartCentroid = _map.toCoordinate(pinchHandler.centroid.position, false)
+            } else {
+                clampZoomLevel()
             }
         }
         onScaleChanged: (delta) => {
@@ -235,19 +290,56 @@ Map {
         visible:        gcsPosition.isValid
         coordinate:     gcsPosition
 
-        sourceItem: Image {
-            id:             mapItemImage
-            source:         isNaN(gcsHeading) ? "/res/QGCLogoFull.svg" : "/res/QGCLogoArrow.svg"
-            mipmap:         true
-            antialiasing:   true
-            fillMode:       Image.PreserveAspectFit
-            height:         ScreenTools.defaultFontPixelHeight * (isNaN(gcsHeading) ? 1.75 : 2.5 )
-            sourceSize.height: height
+        sourceItem: Rectangle {
+            // QGC Logo removed for ASTHRA - Simple marker instead
+            id:             mapMarker
+            width:          ScreenTools.defaultFontPixelHeight * 1.5
+            height:         width
+            radius:         width / 2
+            color:          qgcPal.colorBlue  // Steel Blue for GCS marker
+            border.width:   2
+            border.color:   qgcPal.text
+            visible:        true
+
+            QGCPalette { id: qgcPal }
+
+            // Optional: Add direction indicator if heading is available
+            Rectangle {
+                anchors.centerIn: parent
+                width:  parent.width * 0.3
+                height: parent.height * 0.6
+                color:  qgcPal.text
+                visible: !isNaN(gcsHeading)
             transform: Rotation {
-                origin.x:       mapItemImage.width  / 2
-                origin.y:       mapItemImage.height / 2
+                    origin.x:       parent.width / 2
+                    origin.y:       parent.height / 2
                 angle:          isNaN(gcsHeading) ? 0 : gcsHeading
+                }
             }
+        }
+    }
+
+    // ASTHRA Swarm Backend Integration - load on demand
+    property var _swarmMapItems: null
+    
+    function enableSwarmMapOverlay(swarmClient) {
+        if (!_swarmMapItems && swarmClient) {
+            var component = Qt.createComponent("qrc:/ASTHRA/Swarm/SwarmMapItems.qml")
+            if (component.status === Component.Ready) {
+                _swarmMapItems = component.createObject(_map, {
+                    "map": _map,
+                    "swarmClient": swarmClient
+                })
+            } else {
+                console.error("Failed to load SwarmMapItems:", component.errorString())
+            }
+        }
+    }
+    
+    function disableSwarmMapOverlay() {
+        if (_swarmMapItems) {
+            _swarmMapItems.destroy()
+            _swarmMapItems = null
         }
     }
 } // Map

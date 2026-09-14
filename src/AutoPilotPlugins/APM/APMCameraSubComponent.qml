@@ -32,28 +32,28 @@ SetupPage {
 
             property bool _oldFW:               !(globals.activeVehicle.firmwareMajorVersion > 3 || globals.activeVehicle.firmwareMinorVersion > 5 || globals.activeVehicle.firmwarePatchVersion >= 2)
 
-            property Fact _mountRetractX:       controller.getParameterFact(-1, "MNT_RETRACT_X")
-            property Fact _mountRetractY:       controller.getParameterFact(-1, "MNT_RETRACT_Y")
-            property Fact _mountRetractZ:       controller.getParameterFact(-1, "MNT_RETRACT_Z")
+            property Fact _mountRetractX:       controller.getParameterFact(-1, "MNT_RETRACT_X", false)
+            property Fact _mountRetractY:       controller.getParameterFact(-1, "MNT_RETRACT_Y", false)
+            property Fact _mountRetractZ:       controller.getParameterFact(-1, "MNT_RETRACT_Z", false)
 
-            property Fact _mountNeutralX:       controller.getParameterFact(-1, "MNT_NEUTRAL_X")
-            property Fact _mountNeutralY:       controller.getParameterFact(-1, "MNT_NEUTRAL_Y")
-            property Fact _mountNeutralZ:       controller.getParameterFact(-1, "MNT_NEUTRAL_Z")
+            property Fact _mountNeutralX:       controller.getParameterFact(-1, "MNT_NEUTRAL_X", false)
+            property Fact _mountNeutralY:       controller.getParameterFact(-1, "MNT_NEUTRAL_Y", false)
+            property Fact _mountNeutralZ:       controller.getParameterFact(-1, "MNT_NEUTRAL_Z", false)
 
-            property Fact _mountRCInTilt:       controller.getParameterFact(-1, "MNT_RC_IN_TILT")
-            property Fact _mountStabTilt:       controller.getParameterFact(-1, "MNT_STAB_TILT")
-            property Fact _mountAngMinTilt:     controller.getParameterFact(-1, "MNT_ANGMIN_TIL")
-            property Fact _mountAngMaxTilt:     controller.getParameterFact(-1, "MNT_ANGMAX_TIL")
+            property Fact _mountRCInTilt:       controller.getParameterFact(-1, "MNT_RC_IN_TILT", false)
+            property Fact _mountStabTilt:       controller.getParameterFact(-1, "MNT_STAB_TILT", false)
+            property Fact _mountAngMinTilt:     controller.getParameterFact(-1, "MNT_ANGMIN_TIL", false)
+            property Fact _mountAngMaxTilt:     controller.getParameterFact(-1, "MNT_ANGMAX_TIL", false)
 
-            property Fact _mountRCInRoll:       controller.getParameterFact(-1, "MNT_RC_IN_ROLL")
-            property Fact _mountStabRoll:       controller.getParameterFact(-1, "MNT_STAB_ROLL")
-            property Fact _mountAngMinRoll:     controller.getParameterFact(-1, "MNT_ANGMIN_ROL")
-            property Fact _mountAngMaxRoll:     controller.getParameterFact(-1, "MNT_ANGMAX_ROL")
+            property Fact _mountRCInRoll:       controller.getParameterFact(-1, "MNT_RC_IN_ROLL", false)
+            property Fact _mountStabRoll:       controller.getParameterFact(-1, "MNT_STAB_ROLL", false)
+            property Fact _mountAngMinRoll:     controller.getParameterFact(-1, "MNT_ANGMIN_ROL", false)
+            property Fact _mountAngMaxRoll:     controller.getParameterFact(-1, "MNT_ANGMAX_ROL", false)
 
-            property Fact _mountRCInPan:        controller.getParameterFact(-1, "MNT_RC_IN_PAN")
-            property Fact _mountStabPan:        controller.getParameterFact(-1, "MNT_STAB_PAN")
-            property Fact _mountAngMinPan:      controller.getParameterFact(-1, "MNT_ANGMIN_PAN")
-            property Fact _mountAngMaxPan:      controller.getParameterFact(-1, "MNT_ANGMAX_PAN")
+            property Fact _mountRCInPan:        controller.getParameterFact(-1, "MNT_RC_IN_PAN", false)
+            property Fact _mountStabPan:        controller.getParameterFact(-1, "MNT_STAB_PAN", false)
+            property Fact _mountAngMinPan:      controller.getParameterFact(-1, "MNT_ANGMIN_PAN", false)
+            property Fact _mountAngMaxPan:      controller.getParameterFact(-1, "MNT_ANGMAX_PAN", false)
 
             property Fact _rc5Function:         controller.getParameterFact(-1, "r.SERVO5_FUNCTION")
             property Fact _rc6Function:         controller.getParameterFact(-1, "r.SERVO6_FUNCTION")
@@ -211,7 +211,7 @@ SetupPage {
                 width:      gimbalDirectionTiltLoader.width
                 stepSize:   _fact.increment ? _fact.increment : 1
 
-                property var  _fact:            controller.getParameterFact(-1, "MNT_JSTICK_SPD")
+                property var  _fact:            controller.getParameterFact(-1, "MNT_JSTICK_SPD", false)
                 property bool _loadComplete:    false
 
                 /*
@@ -441,8 +441,8 @@ SetupPage {
                     width:  rectangle.x + rectangle.width
                     height: rectangle.y + rectangle.height
 
-                    property Fact _mountDefaultMode:    controller.getParameterFact(-1, "MNT_DEFLT_MODE")
-                    property Fact _mountType:           controller.getParameterFact(-1, "MNT_TYPE")
+                    property Fact _mountDefaultMode:    controller.getParameterFact(-1, "MNT_DEFLT_MODE", false)
+                    property Fact _mountType:           controller.getParameterFact(-1, "MNT_TYPE", false)
 
                     QGCLabel {
                         id:             settingsLabel

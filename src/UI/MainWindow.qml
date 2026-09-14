@@ -12,6 +12,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
+import QtPositioning
 
 import QGroundControl
 import QGroundControl.Controls
@@ -19,6 +20,7 @@ import QGroundControl.FactControls
 import QGroundControl.FlyView
 import QGroundControl.FlightMap
 import QGroundControl.Toolbar
+import ASTHRA.Swarm
 
 /// @brief Native QML top level window
 /// All properties defined here are visible to all QML pages.
@@ -39,13 +41,94 @@ ApplicationWindow {
     property var disasterReportGenerator: null
     property var disasterReportPanel: null
     property var _lastActiveVehicle: null  // Guard to prevent re-initialization loops
+    
+    // ASTHRA Swarm Backend
+    property bool swarmOverlayEnabled: false
+    property bool spatial3DOpen: false
+
+    QtObject {
+        id: swarmCoverageState
+        property var landPath: []
+        property real totalAreaM2: 0
+        property string fileName: ""
+        property var assignments: []
+        property var sharePercents: ({})
+        property int revision: 0
+    }
+    property alias swarmCoverage: swarmCoverageState
+    property alias swarmBackend: swarmClient
+    
+    SwarmWebSocketClient {
+        id: swarmClient
+        serverUrl: "ws://localhost:8765"
+        Component.onCompleted: {
+            // Auto-connect on startup
+            connectToBackend()
+        }
+        onConnectedChanged: {
+            if (connected && flyView._mapControl && swarmOverlayEnabled) {
+                flyView._mapControl.enableSwarmMapOverlay(swarmClient)
+            }
+        }
+        onErrorOccurred: function(message) {
+            console.error("Swarm backend error:", message)
+        }
+    }
 
     Component.onCompleted: {
-        // Start the sequence of first run prompt(s)
         firstRunPromptManager.nextPrompt()
-
-        // Initialize ASTHRA monitoring
         initializeASTHRAMonitoring()
+        ensureAsthraReady()
+    }
+
+    /// Map defaults, full-screen fly map, and delayed tile refresh for first launch.
+    function ensureAsthraReady() {
+        var fm = QGroundControl.settingsManager.flightMapSettings
+        // Bing Hybrid + high fractional zoom → grey map; OSM blocks QGC user-agent (403).
+        if (fm.mapType.value === "Hybrid") {
+            fm.mapType.value = "Road"
+        }
+        if (fm.mapProvider.value === "Street" || fm.mapProvider.value === "Japan-GSI") {
+            fm.mapProvider.value = "Esri"
+            fm.mapType.value = "World Street"
+        }
+        var z = Math.round(QGroundControl.flightMapZoom)
+        if (z > 17) {
+            z = 14
+        } else if (z < 3) {
+            z = 12
+        }
+        if (Math.abs(z - QGroundControl.flightMapZoom) > 0.01) {
+            QGroundControl.flightMapZoom = z
+        }
+        QGroundControl.saveBoolGlobalSetting("MainFlyWindowIsMap", true)
+        flyView.ensureMapFullScreen()
+        _asthraMapReadyTimer.restart()
+    }
+
+    function applyMapCenter() {
+        if (!flyView._mapControl) {
+            return
+        }
+        flyView._mapControl.updateActiveMapType()
+        flyView._mapControl.ensureMapHasCenter()
+        var vehicle = QGroundControl.multiVehicleManager.activeVehicle
+        if (vehicle && vehicle.coordinate && vehicle.coordinate.isValid) {
+            flyView._mapControl.center = vehicle.coordinate
+        } else {
+            var pos = QGroundControl.flightMapPosition
+            if (pos && pos.isValid && (Math.abs(pos.latitude) > 0.01 || Math.abs(pos.longitude) > 0.01)) {
+                flyView._mapControl.center = pos
+            }
+        }
+        flyView.ensureMapFullScreen()
+    }
+
+    Timer {
+        id:                 _asthraMapReadyTimer
+        interval:           800
+        repeat:             false
+        onTriggered: applyMapCenter()
     }
 
     function initializeASTHRAMonitoring() {
@@ -114,15 +197,15 @@ ApplicationWindow {
         // Connect to active vehicle changes - with guard to prevent loops
         QGroundControl.multiVehicleManager.activeVehicleChanged.connect(function() {
             var vehicle = QGroundControl.multiVehicleManager.activeVehicle
-            
+
             // Guard: Only update if vehicle actually changed
             if (vehicle === mainWindow._lastActiveVehicle) {
                 return
             }
-            
+
             console.log("ASTHRA: Active vehicle changed to:", vehicle ? vehicle.id : "None")
             mainWindow._lastActiveVehicle = vehicle
-            
+
             // Use Qt.callLater to batch updates and prevent cascading
             Qt.callLater(function() {
                 // Initialize components with new vehicle (they handle disconnection internally)
@@ -156,6 +239,7 @@ ApplicationWindow {
                     var missionController = flyView ? flyView.planController : null
                     disasterReportGenerator.initialize(missionLogger, telemetryLogger, offboardMonitor, vehicle, missionController, cameraFrameCapture)
                 }
+                applyMapCenter()
             })
         })
 
@@ -247,10 +331,57 @@ ApplicationWindow {
         toolDrawer.visible = false
     }
 
-    function showFlyView() {
+    function coverageMap() {
+        return flyView._mapControl
+    }
+
+    function fitCoverageLand(path) {
+        if (!flyView._mapControl || !path || path.length < 2)
+            return
+        var minLat = 90, maxLat = -90, minLon = 180, maxLon = -180
+        for (var i = 0; i < path.length; i++) {
+            var c = path[i]
+            var lat = (c.latitude !== undefined) ? c.latitude : c.lat
+            var lon = (c.longitude !== undefined) ? c.longitude : c.lng
+            minLat = Math.min(minLat, lat)
+            maxLat = Math.max(maxLat, lat)
+            minLon = Math.min(minLon, lon)
+            maxLon = Math.max(maxLon, lon)
+        }
+        var padLat = Math.max(0.002, (maxLat - minLat) * 0.25)
+        var padLon = Math.max(0.002, (maxLon - minLon) * 0.25)
+        flyView._mapControl.setVisibleRegion(QtPositioning.rectangle(
+                                                 QtPositioning.coordinate(maxLat + padLat, minLon - padLon),
+                                                 QtPositioning.coordinate(minLat - padLat, maxLon + padLon)))
+    }
+
+    function showFlyView(keepDrawer) {
         flyView.visible = true
         planView.visible = false
-        toolDrawer.visible = false
+        if (!keepDrawer)
+            toolDrawer.visible = false
+        applyMapCenter()
+        if (swarmOverlayEnabled && flyView._mapControl && swarmClient.connected) {
+            flyView._mapControl.enableSwarmMapOverlay(swarmClient)
+        }
+    }
+    
+    function toggleSpatial3DView() {
+        spatial3DOpen = !spatial3DOpen
+        if (spatial3DOpen) {
+            showFlyView()
+        }
+    }
+
+    function toggleSwarmOverlay() {
+        swarmOverlayEnabled = !swarmOverlayEnabled
+        if (flyView._mapControl) {
+            if (swarmOverlayEnabled && swarmClient.connected) {
+                flyView._mapControl.enableSwarmMapOverlay(swarmClient)
+            } else {
+                flyView._mapControl.disableSwarmMapOverlay()
+            }
+        }
     }
 
     function showTool(toolTitle, toolSource, toolIcon) {
@@ -293,8 +424,23 @@ ApplicationWindow {
         }
     }
 
+    function showSwarmCoverage() {
+        flyView.visible = true
+        planView.visible = false
+        applyMapCenter()
+        if (swarmOverlayEnabled && flyView._mapControl && swarmClient.connected) {
+            flyView._mapControl.enableSwarmMapOverlay(swarmClient)
+        }
+        showTool(qsTr("Split land"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRASwarmCoveragePanel.qml", "")
+        if (toolDrawerLoader.item) {
+            toolDrawerLoader.item.mainWindow = mainWindow
+            toolDrawerLoader.item.coverage = swarmCoverageState
+            toolDrawerLoader.item.swarmBackend = swarmClient
+        }
+    }
+
     function showDualVehicleConnection() {
-        showTool(qsTr("Dual Vehicle Connection"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRADualVehicleConnection.qml", "")
+        showSwarmCoverage()
     }
 
     function showRescueReport() {
@@ -516,9 +662,63 @@ ApplicationWindow {
             Rectangle { anchors.right: parent.right; anchors.bottom: parent.bottom; width: 12; height: 2; color: qgcPal.colorBlue }
         }
 
-        FlyView {
-            id:                     flyView
+        SplitView {
+            id:                     flySplitView
             anchors.fill:           parent
+            orientation:            Qt.Horizontal
+            visible:                flyView.visible
+
+            clip: true
+
+            handle: Rectangle {
+                implicitWidth:  6
+                color:          SplitHandle.pressed ? qgcPal.colorBlue : qgcPal.buttonBorder
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 2
+                    height: parent.height * 0.18
+                    color: Qt.lighter(parent.color, 1.4)
+                    opacity: 0.6
+                }
+            }
+
+            FlyView {
+                id:                         flyView
+                useAsthraChrome:            true
+                SplitView.fillWidth:        true
+                SplitView.fillHeight:       true
+                SplitView.minimumWidth:     ScreenTools.defaultFontPixelWidth * 20
+            }
+
+            Loader {
+                id:                         spatial3DLoader
+                active:                     mainWindow.spatial3DOpen
+                visible:                    mainWindow.spatial3DOpen
+                clip:                       true
+                SplitView.fillHeight:       true
+                SplitView.preferredWidth:   Math.max(320, Math.min(460, centralWorkspace.width * 0.32))
+                SplitView.minimumWidth:     mainWindow.spatial3DOpen ? 320 : 0
+                SplitView.fillWidth:        false
+                source:                     "qrc:/qml/QGroundControl/UI/ASTHRA/Spatial3D/ASTHRASpatial3DView.qml"
+                onLoaded: {
+                    if (item) {
+                        item.planMasterController = flyView.planController
+                    }
+                }
+            }
+        }
+
+        // Swarm KML land-cover overlay
+        Loader {
+            id: swarmCoverageMapLoader
+            source: "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRASwarmCoverageMap.qml"
+            visible: flyView.visible
+            onLoaded: {
+                if (item) {
+                    item.coverage = swarmCoverageState
+                    item.map = Qt.binding(function() { return flyView._mapControl })
+                }
+            }
         }
 
         // OFFBOARD Event Map Markers (overlay on map)
@@ -534,6 +734,17 @@ ApplicationWindow {
                     })
                 }
             }
+        }
+        
+        // ASTHRA Swarm Control Panel (top-right of map pane)
+        SwarmControlPanel {
+            id: swarmControlPanel
+            swarmClient: swarmClient
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: ScreenTools.defaultFontPixelHeight
+            visible: flyView.visible && swarmOverlayEnabled
+            z: 100
         }
 
         PlanView {
@@ -715,12 +926,18 @@ ApplicationWindow {
                 if (toolDrawerLoader.item && toolDrawerLoader.item.mainWindow !== undefined) {
                     toolDrawerLoader.item.mainWindow = mainWindow
                 }
+                if (toolDrawerLoader.item && toolDrawerLoader.item.coverage !== undefined) {
+                    toolDrawerLoader.item.coverage = swarmCoverageState
+                }
+                if (toolDrawerLoader.item && toolDrawerLoader.item.swarmBackend !== undefined) {
+                    toolDrawerLoader.item.swarmBackend = swarmClient
+                }
                 // Refresh report when loaded
                 if (toolDrawerLoader.item && typeof toolDrawerLoader.item.refreshReport === 'function') {
                     toolDrawerLoader.item.refreshReport()
                 }
             }
-            
+
             onStatusChanged: {
                 console.log("ASTHRA: Tool drawer loader status changed to:", status, "source:", toolDrawerLoader.source)
                 if (status === Loader.Error) {

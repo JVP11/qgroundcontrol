@@ -38,18 +38,19 @@ Rectangle {
         visible: qgcPal.globalTheme === QGCPalette.Light
     }
 
-    QGCToolBarButton {
-        id: qgcButton
-        height: parent.height
-        icon.source: "/res/QGCLogoFull.svg"
-        logo: true
-        onClicked: mainWindow.showToolSelectDialog()
-    }
+    // QGC Logo removed for ASTHRA branding
+    // QGCToolBarButton {
+    //     id: qgcButton
+    //     height: parent.height
+    //     icon.source: "/res/QGCLogoFull.svg"
+    //     logo: true
+    //     onClicked: mainWindow.showToolSelectDialog()
+    // }
 
     QGCFlickable {
         id: toolsFlickable
         anchors.bottomMargin: 1
-        anchors.left: qgcButton.right
+        anchors.left: parent.left  // Changed: Logo button removed for ASTHRA
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right
