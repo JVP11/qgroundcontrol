@@ -53,6 +53,7 @@ ApplicationWindow {
         property string fileName: ""
         property var assignments: []
         property var sharePercents: ({})
+        property int plannedN: 2
         property int revision: 0
     }
     property alias swarmCoverage: swarmCoverageState
@@ -71,7 +72,7 @@ ApplicationWindow {
             }
         }
         onErrorOccurred: function(message) {
-            console.error("Swarm backend error:", message)
+            console.warn("Swarm backend:", message)
         }
     }
 
@@ -106,6 +107,10 @@ ApplicationWindow {
         _asthraMapReadyTimer.restart()
     }
 
+    function _usableMapCoord(c) {
+        return c && c.isValid && (Math.abs(c.latitude) > 0.01 || Math.abs(c.longitude) > 0.01)
+    }
+
     function applyMapCenter() {
         if (!flyView._mapControl) {
             return
@@ -113,11 +118,11 @@ ApplicationWindow {
         flyView._mapControl.updateActiveMapType()
         flyView._mapControl.ensureMapHasCenter()
         var vehicle = QGroundControl.multiVehicleManager.activeVehicle
-        if (vehicle && vehicle.coordinate && vehicle.coordinate.isValid) {
+        if (vehicle && _usableMapCoord(vehicle.coordinate)) {
             flyView._mapControl.center = vehicle.coordinate
         } else {
             var pos = QGroundControl.flightMapPosition
-            if (pos && pos.isValid && (Math.abs(pos.latitude) > 0.01 || Math.abs(pos.longitude) > 0.01)) {
+            if (_usableMapCoord(pos)) {
                 flyView._mapControl.center = pos
             }
         }
@@ -384,8 +389,9 @@ ApplicationWindow {
         }
     }
 
-    function showTool(toolTitle, toolSource, toolIcon) {
+    function showTool(toolTitle, toolSource, toolIcon, sidePanel) {
         console.log("ASTHRA: showTool called - title:", toolTitle, "source:", toolSource)
+        toolDrawer.sideMode     = !!sidePanel
         toolDrawer.backIcon     = flyView.visible ? "/qmlimages/PaperPlane.svg" : "/qmlimages/Plan.svg"
         toolDrawer.toolTitle    = toolTitle
         toolDrawer.toolSource   = toolSource
@@ -431,12 +437,19 @@ ApplicationWindow {
         if (swarmOverlayEnabled && flyView._mapControl && swarmClient.connected) {
             flyView._mapControl.enableSwarmMapOverlay(swarmClient)
         }
-        showTool(qsTr("Split land"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRASwarmCoveragePanel.qml", "")
+        showTool(qsTr("Split land"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRASwarmCoveragePanel.qml", "", true)
+        if (QGroundControl.linkManager && typeof QGroundControl.linkManager.connectAvailableUsbRadios === "function")
+            QGroundControl.linkManager.connectAvailableUsbRadios()
         if (toolDrawerLoader.item) {
             toolDrawerLoader.item.mainWindow = mainWindow
             toolDrawerLoader.item.coverage = swarmCoverageState
             toolDrawerLoader.item.swarmBackend = swarmClient
         }
+        var land = swarmCoverageState && swarmCoverageState.landPath
+        if (land && land.length >= 3)
+            fitCoverageLand(land)
+        else
+            applyMapCenter()
     }
 
     function showDualVehicleConnection() {
@@ -824,14 +837,20 @@ ApplicationWindow {
         }
     }
 
-    // Tool Drawer - Overlays entire ASTHRA layout when visible
+    // Tool Drawer — full-screen for settings; side panel for SWARM so the map stays visible
     Rectangle {
         id:             toolDrawer
-        anchors.fill:   parent
+        anchors.top:    sideMode ? topStatusStrip.bottom : parent.top
+        anchors.bottom: sideMode ? bottomCommandBar.top : parent.bottom
+        anchors.right:  sideMode ? rightTelemetryColumn.left : parent.right
+        width:          sideMode ? Math.min(centralWorkspace.width * 0.46, ScreenTools.defaultFontPixelWidth * 48) : parent.width
         visible:        false
-        z:              1000  // Ensure it's on top of ASTHRA layout
+        z:              1000
         color:          qgcPal.window
+        border.width:   sideMode ? 1 : 0
+        border.color:   qgcPal.buttonBorder
 
+        property bool sideMode: false
         property var backIcon
         property string toolTitle
         property string toolSource: ""

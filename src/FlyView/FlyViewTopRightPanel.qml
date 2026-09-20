@@ -56,7 +56,7 @@ Rectangle {
             id: selectedVehiclesLabel
             text: {
                 let ids = Array.from({length: selectedVehicles.count}, (_, i) =>
-                    selectedVehicles.get(i).id
+                    selectedVehicles.get(i).fleetSlot
                 ).sort((a, b) => a - b)
                 .join(", ")
                 return qsTr("Selected: ") + ids

@@ -251,7 +251,13 @@ FlightMap {
         MapPolyline {
             id:         trajectoryPolyline
             line.width: 3
-            line.color: object === _activeVehicle ? "red" : (index === 0 ? "#0066FF" : "#00FF66")  // Blue for V1, Green for V2
+            line.color: {
+                if (object === _activeVehicle)
+                    return "red"
+                var colors = ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
+                var slot = (object && object.fleetSlot) ? (object.fleetSlot - 1) : index
+                return colors[Math.abs(slot) % colors.length]
+            }
             z:          QGroundControl.zOrderTrajectoryLines
             visible:    !pipMode
             opacity:    object === _activeVehicle ? 1.0 : 0.7

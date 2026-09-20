@@ -83,36 +83,42 @@ import QGroundControl.Controls
     QGCPalette { id: qgcPal }
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    property var _vehicle1: null
-    property var _vehicle2: null
-    property var _vehicle3: null
-    property bool _dualVehicleMode: false
+    property var _vehicles: QGroundControl.multiVehicleManager.vehicles
+    property int _fleetCount: _vehicles ? _vehicles.count : 0
+    property bool _fleetMode: _fleetCount >= 2
 
-    function updateVehicles() {
-        var count = QGroundControl.multiVehicleManager.vehicles.count
-        _vehicle1 = (count > 0) ? QGroundControl.multiVehicleManager.vehicles.get(0) : null
-        _vehicle2 = (count > 1) ? QGroundControl.multiVehicleManager.vehicles.get(1) : null
-        _vehicle3 = (count > 2) ? QGroundControl.multiVehicleManager.vehicles.get(2) : null
-        _dualVehicleMode = count >= 2
-        console.log("ASTHRA TopStrip: Vehicle count:", count, "V1:", _vehicle1 ? _vehicle1.id : "null", "V2:", _vehicle2 ? _vehicle2.id : "null", "V3:", _vehicle3 ? _vehicle3.id : "null")
+    function padNumber(num, width) {
+        var str = String(num)
+        while (str.length < width)
+            str = "0" + str
+        return str
     }
 
-    Component.onCompleted: {
-        updateVehicles()
+    function fleetColor(index) {
+        var colors = ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
+        var i = parseInt(index, 10)
+        if (isNaN(i) || i < 0)
+            i = 0
+        return colors[i % colors.length]
     }
 
-    Connections {
-        target: QGroundControl.multiVehicleManager.vehicles
-        function onCountChanged() {
-            updateVehicles()
-        }
+    function fleetVehicle(index) {
+        if (!_vehicles || index < 0 || index >= _vehicles.count)
+            return null
+        return _vehicles.get(index)
     }
 
-    Connections {
-        target: QGroundControl.multiVehicleManager
-        function onActiveVehicleChanged(activeVehicle) {
-            updateVehicles()
-        }
+    function radioTag(veh) {
+        if (!veh)
+            return "XX"
+        var n = ""
+        try {
+            n = (veh.vehicleLinkManager && veh.vehicleLinkManager.primaryLinkName) ? String(veh.vehicleLinkManager.primaryLinkName) : ""
+        } catch (e) {}
+        var m = n.match(/ttyACM\d+|ttyUSB\d+|COM\d+/i)
+        if (m)
+            return m[0]
+        return padNumber(veh.id, 2)
     }
 
     property real _standardSpacing: ScreenTools.defaultFontPixelWidth * 1.2  // Tight spacing
@@ -173,15 +179,10 @@ import QGroundControl.Controls
             }
         }
 
-        // Vehicle ID - Military Format: VEHICLE-01 (or V1/V2 in dual mode)
+        // Vehicle ID - one drone, or V1..VN for the whole fleet
         QGCLabel {
-            visible: !_dualVehicleMode
+            visible: !_fleetMode
             text:       _activeVehicle ? ("VEHICLE-" + padNumber(_activeVehicle.id, 2)) : "VEHICLE-NONE"
-            function padNumber(num, width) {
-                var str = num.toString()
-                while (str.length < width) str = "0" + str
-                return str
-            }
             color:      _activeVehicle ? qgcPal.colorGreen : qgcPal.colorGrey
             font.weight: Font.Bold
             font.pointSize: ScreenTools.defaultFontPointSize * 1.1
@@ -190,39 +191,32 @@ import QGroundControl.Controls
             Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
         }
 
-        // Dual Vehicle Display
-        RowLayout {
-            visible: _dualVehicleMode
-            spacing: ScreenTools.defaultFontPixelWidth * 0.5
-            QGCLabel {
-                text:       "V1:" + (_vehicle1 ? padNumber(_vehicle1.id, 2) : "XX")
-                color:      _vehicle1 ? qgcPal.colorBlue : qgcPal.colorGrey
-                font.weight: Font.Bold
-                font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                font.family: ScreenTools.fixedFontFamily
-                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-            }
-            QGCLabel {
-                text:       "V2:" + (_vehicle2 ? padNumber(_vehicle2.id, 2) : "XX")
-                color:      _vehicle2 ? qgcPal.colorGreen : qgcPal.colorGrey
-                font.weight: Font.Bold
-                font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                font.family: ScreenTools.fixedFontFamily
-                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-            }
-            QGCLabel {
-                visible:    QGroundControl.multiVehicleManager.vehicles.count >= 3
-                text:       "V3:" + (_vehicle3 ? padNumber(_vehicle3.id, 2) : "XX")
-                color:      _vehicle3 ? qgcPal.colorYellow : qgcPal.colorGrey
-                font.weight: Font.Bold
-                font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                font.family: ScreenTools.fixedFontFamily
-                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-            }
-            function padNumber(num, width) {
-                var str = num.toString()
-                while (str.length < width) str = "0" + str
-                return str
+        Flickable {
+            visible: _fleetMode
+            Layout.fillWidth: true
+            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 22
+            Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 36
+            Layout.fillHeight: true
+            contentWidth: fleetIdRow.implicitWidth
+            contentHeight: height
+            clip: true
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            RowLayout {
+                id: fleetIdRow
+                height: parent.height
+                spacing: ScreenTools.defaultFontPixelWidth * 0.5
+                Repeater {
+                    model: statusStrip._fleetCount
+                    QGCLabel {
+                        property var veh: statusStrip.fleetVehicle(index)
+                        text:       "V" + (veh && veh.fleetSlot ? veh.fleetSlot : (index + 1)) + ":" + statusStrip.radioTag(veh)
+                        color:      veh ? statusStrip.fleetColor(index) : "#808080"
+                        font.weight: Font.Bold
+                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                        font.family: ScreenTools.fixedFontFamily
+                    }
+                }
             }
         }
 
@@ -240,10 +234,9 @@ import QGroundControl.Controls
             }
         }
 
-        // Flight Mode - Single or Dual
         QGCLabel {
-            visible: !_dualVehicleMode && _activeVehicle
-            text:       "MODE: " + (_activeVehicle ? _activeVehicle.flightMode.toUpperCase() : "STANDBY")
+            visible: !_fleetMode && _activeVehicle
+            text:       "MODE: " + (_activeVehicle && _activeVehicle.flightMode ? _activeVehicle.flightMode.toUpperCase() : "STANDBY")
             color:      qgcPal.text
             font.weight: Font.Bold
             font.pointSize: ScreenTools.defaultFontPointSize * 1.1
@@ -254,34 +247,32 @@ import QGroundControl.Controls
             elide: Text.ElideRight
         }
 
-        // Dual Vehicle Flight Modes
-        RowLayout {
-            visible: _dualVehicleMode
-            spacing: ScreenTools.defaultFontPixelWidth * 0.5
-            QGCLabel {
-                text:       "M1:" + (_vehicle1 ? _vehicle1.flightMode.toUpperCase().substring(0, 4) : "N/A")
-                color:      qgcPal.colorBlue
-                font.weight: Font.Bold
-                font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                font.family: ScreenTools.fixedFontFamily
-                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7
-            }
-            QGCLabel {
-                text:       "M2:" + (_vehicle2 ? _vehicle2.flightMode.toUpperCase().substring(0, 4) : "N/A")
-                color:      qgcPal.colorGreen
-                font.weight: Font.Bold
-                font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                font.family: ScreenTools.fixedFontFamily
-                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7
-            }
-            QGCLabel {
-                visible:    QGroundControl.multiVehicleManager.vehicles.count >= 3
-                text:       "M3:" + (_vehicle3 ? _vehicle3.flightMode.toUpperCase().substring(0, 4) : "N/A")
-                color:      qgcPal.colorYellow
-                font.weight: Font.Bold
-                font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                font.family: ScreenTools.fixedFontFamily
-                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7
+        Flickable {
+            visible: _fleetMode
+            Layout.fillWidth: true
+            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 20
+            Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 32
+            Layout.fillHeight: true
+            contentWidth: fleetModeRow.implicitWidth
+            contentHeight: height
+            clip: true
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            RowLayout {
+                id: fleetModeRow
+                height: parent.height
+                spacing: ScreenTools.defaultFontPixelWidth * 0.5
+                Repeater {
+                    model: statusStrip._fleetCount
+                    QGCLabel {
+                        property var veh: statusStrip.fleetVehicle(index)
+                        text:       "M" + (index + 1) + ":" + (veh && veh.flightMode ? veh.flightMode.toUpperCase().substring(0, 4) : "N/A")
+                        color:      statusStrip.fleetColor(index)
+                        font.weight: Font.Bold
+                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                        font.family: ScreenTools.fixedFontFamily
+                    }
+                }
             }
         }
 
@@ -299,10 +290,9 @@ import QGroundControl.Controls
             }
         }
 
-        // Link Status - Single or Dual
         QGCLabel {
-            visible: !_dualVehicleMode
-            property bool commLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : true
+            visible: !_fleetMode
+            property bool commLost: (_activeVehicle && _activeVehicle.vehicleLinkManager) ? _activeVehicle.vehicleLinkManager.communicationLost : true
             text:       "LINK: " + (commLost ? "DISCONNECTED" : "CONNECTED")
             color:      commLost ? qgcPal.colorRed : qgcPal.colorGreen
             font.weight: Font.Bold
@@ -314,28 +304,18 @@ import QGroundControl.Controls
             elide: Text.ElideRight
         }
 
-        // Dual Vehicle Link Status
         RowLayout {
-            visible: _dualVehicleMode
+            visible: _fleetMode
             spacing: ScreenTools.defaultFontPixelWidth * 0.5
-            Rectangle {
-                width: 4
-                height: 4
-                radius: 2
-                color: _vehicle1 && !_vehicle1.vehicleLinkManager.communicationLost ? qgcPal.colorGreen : qgcPal.colorRed
-            }
-            Rectangle {
-                width: 4
-                height: 4
-                radius: 2
-                color: _vehicle2 && !_vehicle2.vehicleLinkManager.communicationLost ? qgcPal.colorGreen : qgcPal.colorRed
-            }
-            Rectangle {
-                visible: QGroundControl.multiVehicleManager.vehicles.count >= 3
-                width: 4
-                height: 4
-                radius: 2
-                color: _vehicle3 && !_vehicle3.vehicleLinkManager.communicationLost ? qgcPal.colorGreen : qgcPal.colorRed
+            Repeater {
+                model: statusStrip._fleetCount
+                Rectangle {
+                    property var veh: statusStrip.fleetVehicle(index)
+                    width: 4
+                    height: 4
+                    radius: 2
+                    color: veh && veh.vehicleLinkManager && !veh.vehicleLinkManager.communicationLost ? "#2A8B55" : "#C0392B"
+                }
             }
         }
 

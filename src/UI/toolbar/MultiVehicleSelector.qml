@@ -45,7 +45,7 @@ RowLayout {
         }
 
         QGCLabel {
-            text:               _activeVehicle ? qsTr("Vehicle") + " " + _activeVehicle.id : qsTr("N/A")
+            text:               _activeVehicle ? qsTr("Vehicle") + " " + _activeVehicle.fleetSlot : qsTr("N/A")
             font.pointSize:     ScreenTools.mediumFontPointSize
             Layout.alignment:   Qt.AlignCenter
 
@@ -74,9 +74,9 @@ RowLayout {
                             Layout.fillWidth:   true
 
                             onClicked: {
-                                var vehicleId = modelData.split(" ")[1]
-                                var vehicle = QGroundControl.multiVehicleManager.getVehicleById(vehicleId)
-                                QGroundControl.multiVehicleManager.activeVehicle = vehicle
+                                var vehicle = QGroundControl.multiVehicleManager.vehicles.get(index)
+                                if (vehicle)
+                                    QGroundControl.multiVehicleManager.activeVehicle = vehicle
                                 mainWindow.closeIndicatorDrawer()
                             }
                         }
@@ -106,7 +106,7 @@ RowLayout {
         if (_multipleVehicles) {
             for (var i = 0; i < QGroundControl.multiVehicleManager.vehicles.count; i++) {
                 var vehicle = QGroundControl.multiVehicleManager.vehicles.get(i)
-                newModel.push(qsTr("Vehicle") + " " + vehicle.id)
+                newModel.push(qsTr("Vehicle") + " " + vehicle.fleetSlot + "  SYS " + vehicle.id)
             }
         }
         _vehicleModel = newModel

@@ -36,13 +36,14 @@ Item {
     IntegratedAttitudeIndicator {
         id:                     rollIndicator
         x:                      -_totalAttitudeSize
-        attitudeAngleDegrees:   vehicle ? vehicle.roll.rawValue : 0
+        attitudeAngleDegrees:   (vehicle && vehicle.roll) ? (Number(vehicle.roll.rawValue) || 0) : 0
         compassRadius:          control.compassRadius
     }
 
     IntegratedAttitudeIndicator {
         x:                      -_totalAttitudeSize
-        attitudeAngleDegrees:   vehicle ? vehicle.pitch.rawValue : 0
+        // QGC 5.1: rotating this indicator 90° clockwise would otherwise draw nose-up as down.
+        attitudeAngleDegrees:   (vehicle && vehicle.pitch) ? (-Number(vehicle.pitch.rawValue) || 0) : 0
         compassRadius:          control.compassRadius
         attitudeSize:           control.attitudeSize
         attitudeSpacing:        control.attitudeSpacing

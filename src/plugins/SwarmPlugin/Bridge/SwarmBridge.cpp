@@ -343,7 +343,9 @@ bool SwarmBridge::uploadLocalWaypoints(int vehicleId, const QVariantList& waypoi
         return false;
     }
 
-    Vehicle* vehicle = mgr->getVehicleById(vehicleId);
+    Vehicle* vehicle = mgr->getVehicleByGcsId(vehicleId);
+    if (!vehicle)
+        vehicle = mgr->getVehicleById(vehicleId);
     if (!vehicle) {
         qgcApp()->showAppMessage(tr("Vehicle %1 is not connected").arg(vehicleId));
         return false;

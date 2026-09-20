@@ -67,6 +67,7 @@
 #endif
 
 #include <QtCore/QDateTime>
+#include <QtCore/QSet>
 
 QGC_LOGGING_CATEGORY(VehicleLog, "Vehicle.Vehicle")
 
@@ -82,6 +83,27 @@ QGC_LOGGING_CATEGORY(VehicleLog, "Vehicle.Vehicle")
 
 const QString guided_mode_not_supported_by_vehicle = QObject::tr("Guided mode not supported by Vehicle.");
 
+namespace {
+QSet<int> s_usedVehicleGcsIds;
+
+int nextVehicleGcsId()
+{
+    int id = 1;
+    while (s_usedVehicleGcsIds.contains(id)) {
+        ++id;
+    }
+    s_usedVehicleGcsIds.insert(id);
+    return id;
+}
+
+void releaseVehicleGcsId(int id)
+{
+    if (id > 0) {
+        s_usedVehicleGcsIds.remove(id);
+    }
+}
+}
+
 // Standard connected vehicle
 Vehicle::Vehicle(LinkInterface*             link,
                  int                        vehicleId,
@@ -91,6 +113,7 @@ Vehicle::Vehicle(LinkInterface*             link,
                  QObject*                   parent)
     : VehicleFactGroup              (parent)
     , _id                           (vehicleId)
+    , _gcsId                        (nextVehicleGcsId())
     , _defaultComponentId           (defaultComponentId)
     , _firmwareType                 (firmwareType)
     , _vehicleType                  (vehicleType)
@@ -192,6 +215,7 @@ Vehicle::Vehicle(MAV_AUTOPILOT              firmwareType,
                  QObject*                   parent)
     : VehicleFactGroup                  (parent)
     , _id                               (0)
+    , _gcsId                            (0)
     , _defaultComponentId               (MAV_COMP_ID_ALL)
     , _offlineEditingVehicle            (true)
     , _firmwareType                     (firmwareType)
@@ -362,9 +386,19 @@ void Vehicle::_commonInit(LinkInterface* link)
     _createCameraManager();
 }
 
+void Vehicle::setFleetSlot(int slot)
+{
+    if (_fleetSlot == slot) {
+        return;
+    }
+    _fleetSlot = slot;
+    emit fleetSlotChanged();
+}
+
 Vehicle::~Vehicle()
 {
     qCDebug(VehicleLog) << "~Vehicle" << this;
+    releaseVehicleGcsId(_gcsId);
 
     delete _missionManager;
     _missionManager = nullptr;
@@ -436,6 +470,14 @@ void Vehicle::resetCounters()
 
 void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t message)
 {
+    // Two USB/serial radios can share a MAVLink SYSID. Never ingest a link
+    // that already belongs to a different Vehicle instance.
+    if (!_vehicleLinkManager->containsLink(link)) {
+        if (MultiVehicleManager::instance()->vehicleForLink(link)) {
+            return;
+        }
+    }
+
     if (message.sysid != _id && message.sysid != 0) {
         // We allow RADIO_STATUS messages which come from a link the vehicle is using to pass through and be handled
         if (!(message.msgid == MAVLINK_MSG_ID_RADIO_STATUS && _vehicleLinkManager->containsLink(link))) {

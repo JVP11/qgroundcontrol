@@ -165,7 +165,17 @@ Item {
         function onRevisionChanged() { rebuild() }
     }
 
+    Connections {
+        target: map
+        ignoreUnknownSignals: true
+        function onMapReadyChanged() {
+            if (map && map.mapReady)
+                rebuild()
+        }
+    }
+
     onMapChanged: rebuild()
     onCoverageChanged: rebuild()
+    Component.onCompleted: rebuild()
     Component.onDestruction: _clear()
 }

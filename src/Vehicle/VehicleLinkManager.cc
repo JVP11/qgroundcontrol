@@ -12,6 +12,7 @@
 #include "LinkManager.h"
 #include "QGCApplication.h"
 #include "AudioOutput.h"
+#include "MultiVehicleManager.h"
 #ifndef QGC_NO_SERIAL_LINK
     #include "SerialLink.h"
 #endif
@@ -47,6 +48,10 @@ void VehicleLinkManager::mavlinkMessageReceived(LinkInterface *link, const mavli
 
     const int linkIndex = _containsLinkIndex(link);
     if (linkIndex == -1) {
+        Vehicle *const owner = MultiVehicleManager::instance()->vehicleForLink(link);
+        if (owner && owner != _vehicle) {
+            return;
+        }
         _addLink(link);
         return;
     }

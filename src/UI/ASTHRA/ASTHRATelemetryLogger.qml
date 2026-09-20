@@ -56,9 +56,6 @@ QtObject {
         if (activeVehicle) {
             sampleTimer = Qt.createQmlObject("import QtQuick; Timer { interval: " + sampleInterval + "; repeat: true; running: false }", telemetryLogger)
             sampleTimer.triggered.connect(captureSample)
-            if (missionActive) {
-                sampleTimer.running = true
-            }
         }
     }
 

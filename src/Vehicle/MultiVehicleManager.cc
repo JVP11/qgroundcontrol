@@ -111,8 +111,18 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
         return;
     }
 
-    if (_ignoreVehicleIds.contains(vehicleId) || getVehicleById(vehicleId) || (vehicleId == 0)) {
+    if (_ignoreVehicleIds.contains(vehicleId) || (vehicleId == 0)) {
         return;
+    }
+
+    if (vehicleForLink(link)) {
+        return;
+    }
+
+    if (getVehicleById(vehicleId)) {
+        qCWarning(MultiVehicleManagerLog) << "Duplicate SYSID" << vehicleId
+                                          << "on dedicated link" << link->linkConfiguration()->name()
+                                          << "- tracking as a separate vehicle";
     }
 
     qCDebug(MultiVehicleManagerLog) << "Adding new vehicle link:vehicleId:componentId:vehicleFirmwareType:vehicleType "
@@ -131,6 +141,7 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
     (void) connect(vehicle->parameterManager(), &ParameterManager::parametersReadyChanged, this, &MultiVehicleManager::_vehicleParametersReadyChanged);
 
     _vehicles->append(vehicle);
+    _refreshFleetSlots();
 
     // Send QGC heartbeat ASAP, this allows PX4 to start accepting commands
     _sendGCSHeartbeat();
@@ -140,7 +151,7 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
     emit vehicleAdded(vehicle);
 
     if (_vehicles->count() > 1) {
-        qgcApp()->showAppMessage(tr("Connected to Vehicle %1").arg(vehicleId));
+        qCInfo(MultiVehicleManagerLog) << "Connected to GCS vehicle" << vehicle->gcsId() << "sysid" << vehicleId;
     } else {
         setActiveVehicle(vehicle);
     }
@@ -175,7 +186,8 @@ void MultiVehicleManager::_deleteVehiclePhase1(Vehicle *vehicle)
         return;
     }
 
-    deselectVehicle(vehicle->id());
+    deselectVehicle(vehicle->gcsId());
+    _refreshFleetSlots();
 
     _setActiveVehicleAvailable(false);
     _setParameterReadyVehicleAvailable(false);
@@ -313,10 +325,16 @@ void MultiVehicleManager::_sendGCSHeartbeat()
 
 void MultiVehicleManager::selectVehicle(int vehicleId)
 {
-    if(!_vehicleSelected(vehicleId)) {
-        Vehicle *const vehicle = getVehicleById(vehicleId);
-        _selectedVehicles->append(vehicle);
+    if (_vehicleSelected(vehicleId)) {
         return;
+    }
+
+    Vehicle *vehicle = getVehicleByGcsId(vehicleId);
+    if (!vehicle) {
+        vehicle = getVehicleById(vehicleId);
+    }
+    if (vehicle) {
+        _selectedVehicles->append(vehicle);
     }
 }
 
@@ -324,7 +342,14 @@ void MultiVehicleManager::deselectVehicle(int vehicleId)
 {
     for (int i = 0; i < _selectedVehicles->count(); i++) {
         Vehicle *const vehicle = qobject_cast<Vehicle*>(_selectedVehicles->get(i));
-        if (vehicle->id() == vehicleId) {
+        if (vehicle && vehicle->gcsId() == vehicleId) {
+            _selectedVehicles->removeAt(i);
+            return;
+        }
+    }
+    for (int i = 0; i < _selectedVehicles->count(); i++) {
+        Vehicle *const vehicle = qobject_cast<Vehicle*>(_selectedVehicles->get(i));
+        if (vehicle && vehicle->id() == vehicleId) {
             _selectedVehicles->removeAt(i);
             return;
         }
@@ -336,15 +361,30 @@ void MultiVehicleManager::deselectAllVehicles()
     _selectedVehicles->clear();
 }
 
-bool MultiVehicleManager::_vehicleSelected(int vehicleId)
+bool MultiVehicleManager::_vehicleSelected(int gcsId)
 {
     for (int i = 0; i < _selectedVehicles->count(); i++) {
         Vehicle *const vehicle = qobject_cast<Vehicle*>(_selectedVehicles->get(i));
-        if (vehicle->id() == vehicleId) {
+        if (vehicle && vehicle->gcsId() == gcsId) {
             return true;
         }
     }
     return false;
+}
+
+int MultiVehicleManager::fleetSlot(Vehicle *vehicle) const
+{
+    return vehicle ? vehicle->fleetSlot() : 0;
+}
+
+void MultiVehicleManager::_refreshFleetSlots()
+{
+    for (int i = 0; i < _vehicles->count(); i++) {
+        Vehicle *const vehicle = qobject_cast<Vehicle*>(_vehicles->get(i));
+        if (vehicle) {
+            vehicle->setFleetSlot(i + 1);
+        }
+    }
 }
 
 Vehicle *MultiVehicleManager::getVehicleById(int vehicleId) const
@@ -356,6 +396,31 @@ Vehicle *MultiVehicleManager::getVehicleById(int vehicleId) const
         }
     }
 
+    return nullptr;
+}
+
+Vehicle *MultiVehicleManager::getVehicleByGcsId(int gcsId) const
+{
+    for (int i = 0; i < _vehicles->count(); i++) {
+        Vehicle *const vehicle = qobject_cast<Vehicle*>(_vehicles->get(i));
+        if (vehicle && vehicle->gcsId() == gcsId) {
+            return vehicle;
+        }
+    }
+    return nullptr;
+}
+
+Vehicle *MultiVehicleManager::vehicleForLink(LinkInterface *link) const
+{
+    if (!link) {
+        return nullptr;
+    }
+    for (int i = 0; i < _vehicles->count(); i++) {
+        Vehicle *const vehicle = qobject_cast<Vehicle*>(_vehicles->get(i));
+        if (vehicle && vehicle->vehicleLinkManager() && vehicle->vehicleLinkManager()->containsLink(link)) {
+            return vehicle;
+        }
+    }
     return nullptr;
 }
 

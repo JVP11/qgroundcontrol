@@ -23,7 +23,12 @@ MapQuickItem {
     property var    map
     property double altitude:       Number.NaN                                      ///< NAN to not show
     property string callsign:       ""                                              ///< Vehicle callsign
-    property double heading:        vehicle ? vehicle.heading.value : Number.NaN    ///< Vehicle heading, NAN for none
+    property double heading: {
+        if (!vehicle || !vehicle.heading)
+            return Number.NaN
+        var v = vehicle.heading.rawValue
+        return (typeof v === "number" && isFinite(v)) ? v : Number.NaN
+    }
     property real   size:           ScreenTools.defaultFontPixelHeight * 3          /// Default size for icon, most usage overrides this
     property bool   alert:          false                                           /// Collision alert
 
@@ -142,7 +147,7 @@ MapQuickItem {
             property string vehicleLabelText: visible ?
                                                   (_adsbVehicle ?
                                                        QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(altitude).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString + "\n" + callsign :
-                                                       (_multiVehicle ? qsTr("Vehicle %1").arg(vehicle.id) : "")) :
+                                                       (_multiVehicle ? qsTr("Vehicle %1").arg(vehicle.fleetSlot) : "")) :
                                                   ""
 
         }

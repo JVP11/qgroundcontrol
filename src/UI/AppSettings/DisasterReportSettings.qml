@@ -249,25 +249,25 @@ SettingsPage {
         }
     }
 
-            // Dual Vehicle Connection
+            // Fleet Vehicle Connection
             SettingsGroupLayout {
                 Layout.fillWidth:   true
-                heading:            qsTr("Dual Vehicle Connection")
-                headingDescription: qsTr("Simplified connection for dual-drone missions")
+                heading:            qsTr("Fleet Connection")
+                headingDescription: qsTr("Connect any number of drones. Each must have a unique system ID.")
 
                 QGCButton {
                     Layout.fillWidth:   true
-                    text:               qsTr("Open Dual Vehicle Connection Wizard")
+                    text:               qsTr("Open Vehicle Connection Wizard")
                     onClicked: {
                         if (mainWindow) {
-                            mainWindow.showTool(qsTr("Dual Vehicle Connection"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRADualVehicleConnection.qml", "")
+                            mainWindow.showTool(qsTr("Vehicle Connection"), "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRADualVehicleConnection.qml", "")
                         }
                     }
                 }
 
                 LabelledLabel {
                     label:              qsTr("Connected Vehicles")
-                    labelText:          QGroundControl.multiVehicleManager.vehicles.count.toString() + " / 2"
+                    labelText:          QGroundControl.multiVehicleManager.vehicles.count.toString()
                 }
             }
 

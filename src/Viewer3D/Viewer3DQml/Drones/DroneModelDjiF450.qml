@@ -44,7 +44,7 @@ Node{
         {
             Text {
                 color: "red"
-                text: Number(vehicle.id)
+                text: Number(vehicle.fleetSlot)
                 font.pixelSize: 25
             }
         }

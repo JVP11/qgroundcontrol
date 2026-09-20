@@ -121,6 +121,11 @@
         { "regExp": "^PX4 MR-TROPIC",       "boardClass": "Pixhawk" },
         { "regExp": "^PX4 BL MR-TROPIC",    "boardClass": "Pixhawk" },
         { "regExp": "^FT231X USB UART$",    "boardClass": "SiK Radio" },
+        { "regExp": "STM32 Virtual ComPort", "boardClass": "Pixhawk" },
+        { "regExp": "CDC ACM",              "boardClass": "Pixhawk" },
+        { "regExp": "Pixhawk",              "boardClass": "Pixhawk" },
+        { "regExp": "CubeOrange",           "boardClass": "Pixhawk" },
+        { "regExp": "CP210",                "boardClass": "SiK Radio" },
         { "regExp": "USB UART$",            "boardClass": "SiK Radio",  "androidOnly": true, "comment": "Very broad fallback, too dangerous for non-android" }
     ],
 

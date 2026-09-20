@@ -197,7 +197,7 @@ Rectangle {
             if (!vehicles) return
             for (var i = 0; i < vehicles.count; i++) {
                 var v = vehicles.get(i)
-                if (v && swarmBridge.uploadLocalWaypoints(v.id, waypoints)) ok++
+                if (v && swarmBridge.uploadLocalWaypoints(v.gcsId ? v.gcsId : v.id, waypoints)) ok++
                 else fail++
             }
         } else {

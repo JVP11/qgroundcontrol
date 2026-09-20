@@ -87,7 +87,7 @@ Item {
         var vehicles = QGroundControl.multiVehicleManager.vehicles
         for (var i = 0; i < vehicles.count; i++) {
             var vehicle = vehicles.get(i)
-            var vehicleId = vehicle.id
+            var vehicleId = vehicle.gcsId
             if (!vehicleSelected(vehicleId)) {
                 selectVehicle(vehicleId)
             }
@@ -100,7 +100,8 @@ Item {
 
     function vehicleSelected(vehicleId) {
         for (var i = 0; i < selectedVehicles.count; i++ ) {
-            var currentId = selectedVehicles.get(i).id
+            var current = selectedVehicles.get(i)
+            var currentId = current ? current.gcsId : -1
             if (vehicleId === currentId) {
                 return true
             }
@@ -114,7 +115,7 @@ Item {
         anchors.right:      parent.right
         anchors.top:        parent.top
         anchors.bottom:     parent.bottom
-        spacing:            ScreenTools.defaultFontPixelHeight / 2
+        spacing:            ScreenTools.defaultFontPixelWidth * 0.75
         orientation:        ListView.Vertical
         model:              QGroundControl.multiVehicleManager.vehicles
         cacheBuffer:        _cacheBuffer < 0 ? 0 : _cacheBuffer
@@ -127,14 +128,14 @@ Item {
             height:         innerColumn.height + _margin * 2
             color:          QGroundControl.multiVehicleManager.activeVehicle == _vehicle ? _activeVehicleColor : qgcPal.button
             radius:         _margin
-            border.width:   _vehicle && vehicleSelected(_vehicle.id) ? 2 : 0
+            border.width:   _vehicle && vehicleSelected(_vehicle.gcsId) ? 2 : 0
             border.color:   qgcPal.text
 
             property var    _vehicle:   object
 
             QGCMouseArea {
                 anchors.fill:       parent
-                onClicked:          toggleSelect(_vehicle.id)
+                onClicked:          toggleSelect(_vehicle.gcsId)
             }
 
             Column {
@@ -165,7 +166,7 @@ Item {
                     }
 
                     QGCLabel {
-                        text:                 _vehicle ? _vehicle.id : ""
+                        text:                 _vehicle ? ("V" + _vehicle.fleetSlot) : ""
                         font.pointSize:       ScreenTools.largeFontPointSize
                         color:                qgcPal.text
                         Layout.alignment:     Qt.AlignHCenter

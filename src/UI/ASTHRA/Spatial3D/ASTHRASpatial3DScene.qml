@@ -531,7 +531,7 @@ Item {
             model: _mvm ? _mvm.vehicles : []
             delegate: ASTHRASpatialVehicleNode {
                 vehicle: object
-                isActive: _active && object && object.id === _active.id
+                isActive: _active && object && object === _active
                 stale: spatialScene.stale && isActive
                 gpsWeak: spatialScene.gpsWeak && isActive
                 headingEstimated: spatialScene.headingEstimated && isActive

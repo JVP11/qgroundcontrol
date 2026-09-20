@@ -48,6 +48,9 @@ public:
 
     void init();
     Q_INVOKABLE Vehicle *getVehicleById(int vehicleId) const;
+    Q_INVOKABLE Vehicle *getVehicleByGcsId(int gcsId) const;
+    Q_INVOKABLE int fleetSlot(Vehicle *vehicle) const;
+    Vehicle *vehicleForLink(LinkInterface *link) const;
     Q_INVOKABLE void      selectVehicle(int vehicleId);
     Q_INVOKABLE void    deselectVehicle(int vehicleId);
     Q_INVOKABLE void    deselectAllVehicles();
@@ -74,7 +77,8 @@ private slots:
 
 private:
     bool _vehicleExists(int vehicleId);
-    bool _vehicleSelected(int vehicleId);
+    bool _vehicleSelected(int gcsId);
+    void _refreshFleetSlots();
     void _setActiveVehicle(Vehicle *vehicle);
     bool _getActiveVehicleAvailable() const { return _activeVehicleAvailable; }
     void _setActiveVehicleAvailable(bool activeVehicleAvailable);

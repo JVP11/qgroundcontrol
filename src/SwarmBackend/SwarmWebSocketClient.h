@@ -129,4 +129,5 @@ private:
     QString _serverUrl;
     QMap<int, SwarmDrone*> _droneMap;
     QTimer _reconnectTimer;
+    int _reconnectFails = 0;
 };

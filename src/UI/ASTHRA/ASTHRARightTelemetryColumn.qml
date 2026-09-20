@@ -86,34 +86,45 @@ import QGroundControl.Controls
     QGCPalette { id: qgcPal }
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    property var _vehicle1: null
-    property var _vehicle2: null
-    property bool _dualVehicleMode: false
+    property var _vehicles: QGroundControl.multiVehicleManager.vehicles
+    property int _fleetCount: _vehicles ? _vehicles.count : 0
+    property bool _fleetMode: _fleetCount >= 2
 
-    function updateVehicles() {
-        var count = QGroundControl.multiVehicleManager.vehicles.count
-        _vehicle1 = (count > 0) ? QGroundControl.multiVehicleManager.vehicles.get(0) : null
-        _vehicle2 = (count > 1) ? QGroundControl.multiVehicleManager.vehicles.get(1) : null
-        _dualVehicleMode = count >= 2
-        console.log("ASTHRA RightColumn: Vehicle count:", count, "V1:", _vehicle1 ? _vehicle1.id : "null", "V2:", _vehicle2 ? _vehicle2.id : "null", "Dual mode:", _dualVehicleMode)
+    function fleetColor(index) {
+        var colors = ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
+        var i = parseInt(index, 10)
+        if (isNaN(i) || i < 0)
+            i = 0
+        return colors[i % colors.length]
     }
 
-    Component.onCompleted: {
-        updateVehicles()
+    function fleetVehicle(index) {
+        if (!_vehicles || index < 0 || index >= _vehicles.count)
+            return null
+        return _vehicles.get(index)
     }
 
-    Connections {
-        target: QGroundControl.multiVehicleManager.vehicles
-        function onCountChanged() {
-            updateVehicles()
-        }
+    function factNum(obj, fallback) {
+        if (fallback === undefined)
+            fallback = 0
+        if (!obj)
+            return fallback
+        var v = obj.rawValue
+        if (v === undefined || v === null)
+            v = obj.value
+        var n = Number(v)
+        return isFinite(n) ? n : fallback
     }
 
-    Connections {
-        target: QGroundControl.multiVehicleManager
-        function onActiveVehicleChanged(activeVehicle) {
-            updateVehicles()
-        }
+    function vehNum(veh, name, fallback) {
+        if (!veh)
+            return fallback === undefined ? 0 : fallback
+        return factNum(veh[name], fallback === undefined ? 0 : fallback)
+    }
+
+    function slotOf(index) {
+        var veh = fleetVehicle(index)
+        return (veh && veh.fleetSlot) ? veh.fleetSlot : (index + 1)
     }
 
     property real _moduleHeight: ScreenTools.defaultFontPixelHeight * 6.5  // Industrial standard - taller modules
@@ -129,10 +140,8 @@ import QGroundControl.Controls
 
     // Get vehicle for display (for dual mode, show both)
     function getVehicle(index) {
-        if (_dualVehicleMode) {
-            if (index === 0) return _vehicle1
-            if (index === 1) return _vehicle2
-        }
+        if (_fleetMode)
+            return fleetVehicle(index)
         return _activeVehicle
     }
 
@@ -244,25 +253,18 @@ import QGroundControl.Controls
                         font.letterSpacing: 1.5
                         font.family:    ScreenTools.fixedFontFamily
                         color:          qgcPal.text
-                        Layout.fillWidth: !_dualVehicleMode
+                        Layout.fillWidth: !_fleetMode
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V1"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorBlue
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V2"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorGreen
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            text:           "V" + telemetryColumn.slotOf(index)
+                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
+                            font.weight:    Font.Bold
+                            font.family:    ScreenTools.fixedFontFamily
+                            color:          telemetryColumn.fleetColor(index)
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                        }
                     }
                 }
 
@@ -280,9 +282,9 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
-                        property real roll: _activeVehicle ? _activeVehicle.roll.value : 0
+                        property real roll: telemetryColumn.vehNum(_activeVehicle, "roll", 0)
                         text:       (roll >= 0 ? "+" : "") + padString(roll.toFixed(2), 6) + "°"
                         color:      qgcPal.text
                         font.family: ScreenTools.fixedFontFamily
@@ -291,27 +293,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real roll: _vehicle1 ? _vehicle1.roll.value : 0
-                        text:       (roll >= 0 ? "+" : "") + padString(roll.toFixed(2), 6) + "°"
-                        color:      qgcPal.colorBlue
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real roll: _vehicle2 ? _vehicle2.roll.value : 0
-                        text:       (roll >= 0 ? "+" : "") + padString(roll.toFixed(2), 6) + "°"
-                        color:      qgcPal.colorGreen
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real roll: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "roll", 0)
+                            }
+                            text:       (roll >= 0 ? "+" : "") + padString(roll.toFixed(2), 6) + "°"
+                            color:      telemetryColumn.fleetColor(index)
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
 
@@ -329,9 +325,9 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
-                        property real pitch: _activeVehicle ? _activeVehicle.pitch.value : 0
+                        property real pitch: telemetryColumn.vehNum(_activeVehicle, "pitch", 0)
                         text:       (pitch >= 0 ? "+" : "") + padString(pitch.toFixed(2), 6) + "°"
                         color:      qgcPal.text
                         font.family: ScreenTools.fixedFontFamily
@@ -340,27 +336,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real pitch: _vehicle1 ? _vehicle1.pitch.value : 0
-                        text:       (pitch >= 0 ? "+" : "") + padString(pitch.toFixed(2), 6) + "°"
-                        color:      qgcPal.colorBlue
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real pitch: _vehicle2 ? _vehicle2.pitch.value : 0
-                        text:       (pitch >= 0 ? "+" : "") + padString(pitch.toFixed(2), 6) + "°"
-                        color:      qgcPal.colorGreen
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real pitch: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "pitch", 0)
+                            }
+                            text:       (pitch >= 0 ? "+" : "") + padString(pitch.toFixed(2), 6) + "°"
+                            color:      telemetryColumn.fleetColor(index)
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
 
@@ -378,9 +368,9 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
-                        property real yaw: _activeVehicle ? _activeVehicle.heading.value : 0
+                        property real yaw: telemetryColumn.vehNum(_activeVehicle, "heading", 0)
                         text:       padString(yaw.toFixed(2), 6) + "°"
                         color:      qgcPal.text
                         font.family: ScreenTools.fixedFontFamily
@@ -389,27 +379,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real yaw: _vehicle1 ? _vehicle1.heading.value : 0
-                        text:       padString(yaw.toFixed(2), 6) + "°"
-                        color:      qgcPal.colorBlue
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real yaw: _vehicle2 ? _vehicle2.heading.value : 0
-                        text:       padString(yaw.toFixed(2), 6) + "°"
-                        color:      qgcPal.colorGreen
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real yaw: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "heading", 0)
+                            }
+                            text:       padString(yaw.toFixed(2), 6) + "°"
+                            color:      telemetryColumn.fleetColor(index)
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
             }
@@ -470,25 +454,18 @@ import QGroundControl.Controls
                         font.letterSpacing: 1.5
                         font.family:    ScreenTools.fixedFontFamily
                         color:          qgcPal.text
-                        Layout.fillWidth: !_dualVehicleMode
+                        Layout.fillWidth: !_fleetMode
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V1"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorBlue
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V2"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorGreen
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            text:           "V" + telemetryColumn.slotOf(index)
+                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
+                            font.weight:    Font.Bold
+                            font.family:    ScreenTools.fixedFontFamily
+                            color:          telemetryColumn.fleetColor(index)
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                        }
                     }
                 }
 
@@ -506,9 +483,9 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
-                        property real altitude: _activeVehicle ? _activeVehicle.altitudeRelative.value : 0
+                        property real altitude: telemetryColumn.vehNum(_activeVehicle, "altitudeRelative", 0)
                         text:       padString(altitude.toFixed(2), 7) + " m"
                         color:      qgcPal.text
                         font.family: ScreenTools.fixedFontFamily
@@ -517,27 +494,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real altitude: _vehicle1 ? _vehicle1.altitudeRelative.value : 0
-                        text:       padString(altitude.toFixed(2), 7) + " m"
-                        color:      qgcPal.colorBlue
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real altitude: _vehicle2 ? _vehicle2.altitudeRelative.value : 0
-                        text:       padString(altitude.toFixed(2), 7) + " m"
-                        color:      qgcPal.colorGreen
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real altitude: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "altitudeRelative", 0)
+                            }
+                            text:       padString(altitude.toFixed(2), 7) + " m"
+                            color:      telemetryColumn.fleetColor(index)
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
 
@@ -555,9 +526,9 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
-                        property real speed: _activeVehicle ? _activeVehicle.groundSpeed.value : 0
+                        property real speed: telemetryColumn.vehNum(_activeVehicle, "groundSpeed", 0)
                         text:       padString(speed.toFixed(2), 7) + " m/s"
                         color:      qgcPal.text
                         font.family: ScreenTools.fixedFontFamily
@@ -566,27 +537,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real speed: _vehicle1 ? _vehicle1.groundSpeed.value : 0
-                        text:       padString(speed.toFixed(2), 7) + " m/s"
-                        color:      qgcPal.colorBlue
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real speed: _vehicle2 ? _vehicle2.groundSpeed.value : 0
-                        text:       padString(speed.toFixed(2), 7) + " m/s"
-                        color:      qgcPal.colorGreen
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real speed: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "groundSpeed", 0)
+                            }
+                            text:       padString(speed.toFixed(2), 7) + " m/s"
+                            color:      telemetryColumn.fleetColor(index)
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
 
@@ -604,9 +569,9 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
-                        property real vSpeed: _activeVehicle ? _activeVehicle.climbRate.value : 0
+                        property real vSpeed: telemetryColumn.vehNum(_activeVehicle, "climbRate", 0)
                         text:       (vSpeed >= 0 ? "+" : "") + padString(vSpeed.toFixed(2), 6) + " m/s"
                         color:      vSpeed > 0 ? qgcPal.colorGreen : (vSpeed < 0 ? qgcPal.colorRed : qgcPal.text)
                         font.family: ScreenTools.fixedFontFamily
@@ -615,27 +580,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real vSpeed: _vehicle1 ? _vehicle1.climbRate.value : 0
-                        text:       (vSpeed >= 0 ? "+" : "") + padString(vSpeed.toFixed(2), 6) + " m/s"
-                        color:      vSpeed > 0 ? qgcPal.colorGreen : (vSpeed < 0 ? qgcPal.colorRed : qgcPal.colorBlue)
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real vSpeed: _vehicle2 ? _vehicle2.climbRate.value : 0
-                        text:       (vSpeed >= 0 ? "+" : "") + padString(vSpeed.toFixed(2), 6) + " m/s"
-                        color:      vSpeed > 0 ? qgcPal.colorGreen : (vSpeed < 0 ? qgcPal.colorRed : qgcPal.colorGreen)
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real vSpeed: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "climbRate", 0)
+                            }
+                            text:       (vSpeed >= 0 ? "+" : "") + padString(vSpeed.toFixed(2), 6) + " m/s"
+                            color:      vSpeed > 0 ? qgcPal.colorGreen : (vSpeed < 0 ? qgcPal.colorRed : telemetryColumn.fleetColor(index))
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
             }
@@ -705,25 +664,18 @@ import QGroundControl.Controls
                         font.letterSpacing: 1.5
                         font.family:    ScreenTools.fixedFontFamily
                         color:          qgcPal.text
-                        Layout.fillWidth: !_dualVehicleMode
+                        Layout.fillWidth: !_fleetMode
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V1"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorBlue
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V2"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorGreen
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            text:           "V" + telemetryColumn.slotOf(index)
+                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
+                            font.weight:    Font.Bold
+                            font.family:    ScreenTools.fixedFontFamily
+                            color:          telemetryColumn.fleetColor(index)
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                        }
                     }
                 }
 
@@ -741,7 +693,7 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
                         property real hdop: (_activeVehicle && _activeVehicle.gpsHDOP) ? _activeVehicle.gpsHDOP.value : 0
                         text:       padString(hdop.toFixed(3), 6)
@@ -752,27 +704,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real hdop: (_vehicle1 && _vehicle1.gpsHDOP) ? _vehicle1.gpsHDOP.value : 0
-                        text:       padString(hdop.toFixed(3), 6)
-                        color:      hdop <= 0 ? qgcPal.colorGrey : (hdop < 1.0 ? qgcPal.colorGreen : (hdop < 2.0 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real hdop: (_vehicle2 && _vehicle2.gpsHDOP) ? _vehicle2.gpsHDOP.value : 0
-                        text:       padString(hdop.toFixed(3), 6)
-                        color:      hdop <= 0 ? qgcPal.colorGrey : (hdop < 1.0 ? qgcPal.colorGreen : (hdop < 2.0 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real hdop: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return (veh && veh.gpsHDOP) ? veh.gpsHDOP.value : 0
+                            }
+                            text:       padString(hdop.toFixed(3), 6)
+                            color:      hdop <= 0 ? qgcPal.colorGrey : (hdop < 1.0 ? qgcPal.colorGreen : (hdop < 2.0 ? qgcPal.colorYellow : qgcPal.colorOrange))
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
 
@@ -790,7 +736,7 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
                     QGCLabel {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         Layout.fillWidth: true
                         property real vdop: (_activeVehicle && _activeVehicle.gpsVDOP) ? _activeVehicle.gpsVDOP.value : 0
                         text:       padString(vdop.toFixed(3), 6)
@@ -801,27 +747,21 @@ import QGroundControl.Controls
                         horizontalAlignment: Text.AlignRight
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real vdop: (_vehicle1 && _vehicle1.gpsVDOP) ? _vehicle1.gpsVDOP.value : 0
-                        text:       padString(vdop.toFixed(3), 6)
-                        color:      vdop <= 0 ? qgcPal.colorGrey : (vdop < 1.5 ? qgcPal.colorGreen : (vdop < 2.5 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
-                    }
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                        property real vdop: (_vehicle2 && _vehicle2.gpsVDOP) ? _vehicle2.gpsVDOP.value : 0
-                        text:       padString(vdop.toFixed(3), 6)
-                        color:      vdop <= 0 ? qgcPal.colorGrey : (vdop < 1.5 ? qgcPal.colorGreen : (vdop < 2.5 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        horizontalAlignment: Text.AlignRight
+                    Repeater {
+                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                        QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            property real vdop: {
+                                var veh = telemetryColumn.fleetVehicle(index)
+                                return (veh && veh.gpsVDOP) ? veh.gpsVDOP.value : 0
+                            }
+                            text:       padString(vdop.toFixed(3), 6)
+                            color:      vdop <= 0 ? qgcPal.colorGrey : (vdop < 1.5 ? qgcPal.colorGreen : (vdop < 2.5 ? qgcPal.colorYellow : qgcPal.colorOrange))
+                            font.family: ScreenTools.fixedFontFamily
+                            font.weight: Font.Bold
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                            horizontalAlignment: Text.AlignRight
+                        }
                     }
                 }
             }

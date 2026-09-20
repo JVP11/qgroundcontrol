@@ -39,14 +39,24 @@ Rectangle {
     property var assignments: []
     property string _lastError: ""
     property bool showUsbLinks: false
+    property bool showMapSquare: false
     property real surveyAltM: 30
     property real surveySpacingM: 20
+    property int plannedN: 2
+    property int readyTick: 0
 
-    readonly property var _colors: ["#D4A017", "#2A8B55", "#2D4A5F", "#9B2D2D", "#534AB7", "#8B9199"]
+    readonly property var _colors: ["#D4A017", "#2A8B55", "#2D4A5F", "#9B2D2D", "#534AB7", "#8B9199", "#C45C26", "#1A7A8C", "#6B4F2A", "#3D6B4F"]
 
     QGCPalette { id: qgcPal }
 
     ListModel { id: shareModel }
+
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: readyTick++
+    }
 
     function _coordLat(c) { return (c.latitude !== undefined) ? c.latitude : c.lat }
     function _coordLon(c) { return (c.longitude !== undefined) ? c.longitude : c.lng }
@@ -76,8 +86,10 @@ Rectangle {
             if (v && v.coordinate && v.coordinate.isValid)
                 c = v.coordinate
         }
-        if (!c || !c.isValid || (Math.abs(c.latitude) < 0.0001 && Math.abs(c.longitude) < 0.0001))
-            c = QtPositioning.coordinate(12.9716, 77.5946)
+        if (!c || !c.isValid || (Math.abs(c.latitude) < 0.0001 && Math.abs(c.longitude) < 0.0001)) {
+            statusText = "Pan the fly map to the field first, or load a KML land file."
+            return
+        }
         var half = Math.max(50, scanSizeM) * 0.5
         var dLat = half / 110540.0
         var dLon = half / (111320.0 * Math.max(0.25, Math.cos(c.latitude * Math.PI / 180.0)))
@@ -224,7 +236,7 @@ Rectangle {
             if (id === undefined || id === null)
                 return
             if (!byId[id]) {
-                byId[id] = { vehicleId: id, linked: false, backend: false }
+                byId[id] = { vehicleId: id, sysid: 0, linked: false, backend: false, linkName: "", fleetSlot: 0 }
                 order.push(id)
             }
             if (linked)
@@ -232,22 +244,64 @@ Rectangle {
             if (backend)
                 byId[id].backend = true
         }
-        // Configured swarm is always 1–2–3 so % split works before USB/backend is up.
-        for (var p = 1; p <= 3; p++)
-            add(p, false, false)
         if (_vehicles) {
             for (var i = 0; i < _vehicles.count; i++) {
                 var v = _vehicles.get(i)
-                if (v)
-                    add(v.id, true, false)
+                if (!v)
+                    continue
+                var gid = (v.gcsId !== undefined && v.gcsId > 0) ? v.gcsId : v.id
+                add(gid, true, false)
+                byId[gid].sysid = v.id
+                byId[gid].fleetSlot = v.fleetSlot ? v.fleetSlot : (i + 1)
+                if (v.vehicleLinkManager)
+                    byId[gid].linkName = v.vehicleLinkManager.primaryLinkName || ""
             }
         }
         for (var j = 0; j < _swarmCount; j++) {
             var d = _swarmDrones[j]
-            if (d)
-                add(d.droneId !== undefined ? d.droneId : (j + 1), false, true)
+            if (!d)
+                continue
+            var bid = d.droneId !== undefined ? d.droneId : (j + 1)
+            var match = null
+            var matches = 0
+            for (var k = 0; k < order.length; k++) {
+                if (byId[order[k]].linked && byId[order[k]].sysid === bid) {
+                    match = order[k]
+                    matches++
+                }
+            }
+            if (matches === 1) {
+                byId[match].backend = true
+            } else {
+                var key = bid
+                while (byId[key])
+                    key += 100
+                add(key, false, true)
+                byId[key].sysid = bid
+            }
+        }
+        if (order.length > 16)
+            order = order.slice(0, 16)
+        var nWant = Math.max(1, Math.min(16, plannedN))
+        var p = 1
+        while (order.length < nWant) {
+            while (byId[p])
+                p++
+            add(p, false, false)
         }
         return order.map(function (id) { return byId[id] })
+    }
+
+    function setPlannedN(n) {
+        var next = Math.max(1, Math.min(16, Math.round(n)))
+        if (next === plannedN)
+            return
+        plannedN = next
+        if (coverage)
+            coverage.plannedN = next
+        rebuildDrones(true)
+        persistSharePercents()
+        statusText = "Fleet size " + plannedN + ". Enter each drone's %, then draw the split."
     }
 
     function persistSharePercents() {
@@ -255,6 +309,11 @@ Rectangle {
         for (var i = 0; i < shareModel.count; i++) {
             var row = shareModel.get(i)
             map[String(row.vehicleId)] = row.percent
+            map["slot:" + (i + 1)] = row.percent
+            var veh = _vehicleById(row.vehicleId)
+            var port = radioPort(veh)
+            if (port.length)
+                map["port:" + port] = row.percent
         }
         if (coverage)
             coverage.sharePercents = map
@@ -273,7 +332,7 @@ Rectangle {
             if (v !== undefined)
                 saved[k] = v
         }
-        for (var p = 1; p <= 12; p++)
+        for (var p = 1; p <= 64; p++)
             take(p)
         try {
             var keys = Object.keys(persisted)
@@ -283,13 +342,35 @@ Rectangle {
         return saved
     }
 
+    function _savedPercent(saved, row, index, fallback) {
+        if (!saved)
+            return fallback
+        if (row && saved[String(row.vehicleId)] !== undefined)
+            return saved[String(row.vehicleId)]
+        var port = ""
+        if (row && row.linkName)
+            port = String(row.linkName).match(/ttyACM\d+|ttyUSB\d+|COM\d+/i)
+        if (!port || !port.length) {
+            var veh = row ? _vehicleById(row.vehicleId) : null
+            port = radioPort(veh)
+        } else {
+            port = port[0]
+        }
+        if (port && saved["port:" + port] !== undefined)
+            return saved["port:" + port]
+        if (saved["slot:" + (index + 1)] !== undefined)
+            return saved["slot:" + (index + 1)]
+        return fallback
+    }
+
     function _tagFor(row) {
+        var extra = row.sysid ? (" · SYS " + row.sysid) : ""
         if (row.linked && row.backend)
-            return "GCS + BACKEND"
+            return "GCS + BACKEND" + extra
         if (row.linked)
-            return "GCS LINK"
+            return "GCS LINK" + extra
         if (row.backend)
-            return "BACKEND"
+            return "BACKEND" + extra
         return "PLANNED"
     }
 
@@ -305,12 +386,15 @@ Rectangle {
             }
         }
         var fleet = collectFleet()
+        if (fleet.length > 16)
+            fleet = fleet.slice(0, 16)
         var n = fleet.length
-        var useSaved = !!(keepPercents && n > 0)
-        for (var ck = 0; ck < n && useSaved; ck++) {
-            if (saved[String(fleet[ck].vehicleId)] === undefined)
-                useSaved = false
+        if (n > plannedN) {
+            plannedN = Math.min(16, n)
+            if (coverage)
+                coverage.plannedN = plannedN
         }
+        var useSaved = !!(keepPercents && n > 0 && Object.keys(saved).length > 0)
         var inPlace = !!(useSaved && shareModel.count === n && n > 0)
         if (inPlace) {
             for (var s = 0; s < n; s++) {
@@ -328,10 +412,15 @@ Rectangle {
                     shareModel.setProperty(u, "tag", tag)
                 if (shareModel.get(u).linked !== frow.linked)
                     shareModel.setProperty(u, "linked", frow.linked)
-                var want = saved[String(frow.vehicleId)]
+                var wantName = "DRONE " + (u + 1)
+                if (shareModel.get(u).name !== wantName)
+                    shareModel.setProperty(u, "name", wantName)
+                var want = _savedPercent(saved, frow, u, shareModel.get(u).percent)
                 if (want !== undefined && shareModel.get(u).percent !== want)
                     shareModel.setProperty(u, "percent", want)
             }
+            if (shareModel.count > 0 && Math.abs(percentSum() - 100) > 0.6)
+                renormalizePercents()
             return
         }
         var base = n > 0 ? Math.floor(100 / n) : 0
@@ -341,18 +430,20 @@ Rectangle {
             var row = fleet[i]
             var id = row.vehicleId
             var pct = base + (i === n - 1 ? rem : 0)
-            if (useSaved && saved[String(id)] !== undefined)
-                pct = saved[String(id)]
+            if (useSaved)
+                pct = _savedPercent(saved, row, i, pct)
             shareModel.append({
                                   vehicleId: id,
-                                  name: "DRONE " + id,
+                                  name: "DRONE " + (i + 1),
                                   tag: _tagFor(row),
                                   linked: row.linked,
                                   percent: pct,
                                   accent: _colors[i % _colors.length]
                               })
         }
-        if (useSaved)
+        if (shareModel.count > 0 && Math.abs(percentSum() - 100) > 0.6)
+            renormalizePercents()
+        else if (useSaved)
             persistSharePercents()
     }
 
@@ -361,9 +452,7 @@ Rectangle {
         persistSharePercents()
         statusText = _droneCount === 0
                 ? "No drones yet. Tap Connect."
-                : (_droneCount === 3
-                   ? "Equal split: 33% / 33% / 34%."
-                   : "Each drone got an equal share.")
+                : ("Equal split across " + _droneCount + " drone(s).")
     }
 
     function bumpPercent(index, delta) {
@@ -381,13 +470,30 @@ Rectangle {
 
     function connectRadios() {
         var autoConnectSettings = QGroundControl.settingsManager.autoConnectSettings
-        if (autoConnectSettings && autoConnectSettings.autoConnectUDP)
-            autoConnectSettings.autoConnectUDP.value = true
+        if (autoConnectSettings) {
+            if (autoConnectSettings.autoConnectPixhawk)
+                autoConnectSettings.autoConnectPixhawk.value = true
+            if (autoConnectSettings.autoConnectSiKRadio)
+                autoConnectSettings.autoConnectSiKRadio.value = true
+        }
+        var opened = 0
+        if (QGroundControl.linkManager && typeof QGroundControl.linkManager.connectAvailableUsbRadios === "function")
+            opened = QGroundControl.linkManager.connectAvailableUsbRadios()
         if (swarmBackend && !swarmBackend.connected)
             swarmBackend.connectToBackend()
-        statusText = _droneCount > 0
-                ? (_droneCount + " drone(s) ready. Next: choose the land file.")
-                : "Waiting for drones on UDP 14550, 14551 and 14552…"
+        if (opened > 0)
+            statusText = "Opening " + opened + " USB radio(s). Each cable is its own drone."
+        else if (_qgcCount > 0) {
+            var primary = []
+            if (QGroundControl.linkManager && typeof QGroundControl.linkManager.usbPrimarySerialPorts === "function")
+                primary = QGroundControl.linkManager.usbPrimarySerialPorts()
+            statusText = _qgcCount + " radio(s) already linked."
+            if (primary && primary.length > _qgcCount)
+                statusText += " " + (primary.length - _qgcCount) + " more Pixhawk cable(s) waiting. Tap Connect USB radios."
+            else
+                statusText += " Load a KML, set each drone's %, then split."
+        } else
+            statusText = "No USB radio seen yet. Plug each drone, then tap Connect again."
     }
 
     function percentSum() {
@@ -461,9 +567,28 @@ Rectangle {
             }
             var u0 = start / bins
             var u1 = bin / bins
+            var lat0 = ((b.minLat + b.maxLat) * 0.5) * Math.PI / 180.0
+            var mLon = 111320.0 * Math.max(0.25, Math.cos(lat0))
+            var spanM = splitLon ? (b.maxLon - b.minLon) * mLon : (b.maxLat - b.minLat) * 110540.0
+            var gapFrac = Math.min(0.05, (Math.max(surveySpacingM, 8) * 0.35) / Math.max(spanM, 1))
+            if (d > 0)
+                u0 += gapFrac * 0.5
+            if (d < shareModel.count - 1)
+                u1 -= gapFrac * 0.5
+            if (u1 <= u0) {
+                u0 = start / bins
+                u1 = bin / bins
+            }
             var region = splitLon
                     ? clipLonBand(landPath, b.minLon + u0 * (b.maxLon - b.minLon), b.minLon + u1 * (b.maxLon - b.minLon))
                     : clipLatBand(landPath, b.minLat + u0 * (b.maxLat - b.minLat), b.minLat + u1 * (b.maxLat - b.minLat))
+            if (!region || region.length < 3) {
+                u0 = start / bins
+                u1 = bin / bins
+                region = splitLon
+                        ? clipLonBand(landPath, b.minLon + u0 * (b.maxLon - b.minLon), b.minLon + u1 * (b.maxLon - b.minLon))
+                        : clipLatBand(landPath, b.minLat + u0 * (b.maxLat - b.minLat), b.minLat + u1 * (b.maxLat - b.minLat))
+            }
             var area = polygonAreaM2(region)
             out.push({
                          vehicleId: share.vehicleId,
@@ -471,7 +596,10 @@ Rectangle {
                          percent: share.percent,
                          areaM2: area,
                          path: region,
-                         color: share.accent
+                         color: share.accent,
+                         uploaded: false,
+                         sent: false,
+                         wpCount: 0
                      })
         }
         assignments = out
@@ -577,7 +705,9 @@ Rectangle {
                          path: a.path,
                          color: a.color,
                          waypoints: wps,
-                         wpCount: wps.length
+                         wpCount: wps.length,
+                         uploaded: false,
+                         sent: false
                      })
         }
         assignments = out
@@ -593,12 +723,25 @@ Rectangle {
     function _vehicleById(id) {
         if (!_vehicles)
             return null
+        if (_mvm && typeof _mvm.getVehicleByGcsId === "function") {
+            var byGcs = _mvm.getVehicleByGcsId(id)
+            if (byGcs)
+                return byGcs
+        }
+        var bySys = null
+        var sysHits = 0
         for (var i = 0; i < _vehicles.count; i++) {
             var v = _vehicles.get(i)
-            if (v && v.id === id)
+            if (!v)
+                continue
+            if (v.gcsId !== undefined && v.gcsId === id)
                 return v
+            if (v.id === id) {
+                bySys = v
+                sysHits++
+            }
         }
-        return null
+        return sysHits === 1 ? bySys : null
     }
 
     function _simpleItem(cmd, jumpId, lat, lon, alt, p1) {
@@ -618,10 +761,9 @@ Rectangle {
     function _planJson(vehicle, wps) {
         var items = []
         var first = wps[0]
-        items.push(_simpleItem(22, 1, first.lat, first.lon, first.alt, 15))
         for (var i = 0; i < wps.length; i++)
-            items.push(_simpleItem(16, i + 2, wps[i].lat, wps[i].lon, wps[i].alt, 0))
-        items.push(_simpleItem(20, wps.length + 2, 0, 0, 0, 0))
+            items.push(_simpleItem(16, i + 1, wps[i].lat, wps[i].lon, wps[i].alt, 0))
+        items.push(_simpleItem(20, wps.length + 1, 0, 0, 0, 0))
         var fw = 12
         var vt = 2
         if (vehicle) {
@@ -679,9 +821,13 @@ Rectangle {
                 continue
             }
             v.sendPlan(path)
+            a.sent = true
+            a.uploaded = true
             uploaded++
         }
-        var msg = uploaded + " survey(s) uploaded to radios."
+        assignments = assignments.slice()
+        _publish()
+        var msg = uploaded + " survey(s) sent to radios. Confirm each vehicle accepted the plan before you arm."
         if (skipped.length)
             msg += " No GCS radio: " + skipped.join(", ") + "."
         if (failed.length)
@@ -689,6 +835,170 @@ Rectangle {
         if (uploaded === 0 && skipped.length)
             msg += " Plug in UDP/USB so each drone can receive its plan."
         statusText = msg
+    }
+
+    function radioPort(veh) {
+        if (!veh || !veh.vehicleLinkManager)
+            return ""
+        var n = String(veh.vehicleLinkManager.primaryLinkName || "")
+        var m = n.match(/ttyACM\d+|ttyUSB\d+|COM\d+/i)
+        return m ? m[0] : ""
+    }
+
+    function _gpsOk(veh) {
+        if (!veh)
+            return false
+        try {
+            if (veh.gps && veh.gps.lock && veh.gps.lock.rawValue >= 2)
+                return true
+            if (veh.gps && veh.gps.count && veh.gps.count.rawValue >= 6)
+                return true
+            if (veh.gps && veh.gps.hdop && veh.gps.hdop.rawValue > 0 && veh.gps.hdop.rawValue < 2.5)
+                return true
+        } catch (e) {}
+        return false
+    }
+
+    function assignmentStatus(a) {
+        var tick = readyTick
+        var v = _vehicleById(a.vehicleId)
+        if (!v)
+            return a.name + "  NO RADIO"
+        var bits = [a.name]
+        var port = radioPort(v)
+        bits.push(port.length ? port : ("SYS " + v.id))
+        bits.push(_gpsOk(v) ? "GPS" : "NO GPS")
+        bits.push((v.prearmError && v.prearmError.length) ? "PREARM" : "OK")
+        if (v.readyToFlyAvailable)
+            bits.push(v.readyToFly ? "FLY OK" : "NOT READY")
+        bits.push((a.uploaded || a.sent) ? "PLAN SENT" : (a.wpCount ? "PLAN READY" : "NO PLAN"))
+        if (v.armed)
+            bits.push("ARMED")
+        return bits.join("  ·  ")
+    }
+
+    function renormalizePercents() {
+        var s = percentSum()
+        if (shareModel.count === 0)
+            return
+        if (s <= 0) {
+            equalSplit()
+            return
+        }
+        var acc = 0
+        for (var i = 0; i < shareModel.count; i++) {
+            var p = shareModel.get(i).percent / s * 100.0
+            if (i === shareModel.count - 1)
+                p = 100 - acc
+            shareModel.setProperty(i, "percent", p)
+            acc += p
+        }
+        persistSharePercents()
+    }
+
+    function prepareSwarm() {
+        connectRadios()
+        if (_qgcCount > plannedN)
+            setPlannedN(_qgcCount)
+        if (shareModel.count === 0)
+            rebuildDrones(true)
+        if (!landPath || landPath.length < 3 || fileName === "Land on map") {
+            statusText = "Load a KML land file first. Then set each drone's area % to 100% total, then Prepare."
+            return
+        }
+        if (Math.abs(percentSum() - 100) > 0.6) {
+            statusText = "Set each drone's area % so they add to 100% before split. Now " + percentSum().toFixed(0) + "%."
+            return
+        }
+        applySplit()
+        makeSurvey()
+        uploadSurveys()
+        if (uploadedCount() > 0)
+            statusText = "Swarm prepared. " + uploadedCount() + " plan(s) sent. Arm each drone yourself, then Start uploaded missions."
+    }
+
+    function uploadedCount() {
+        var n = 0
+        for (var i = 0; i < assignments.length; i++) {
+            if (assignments[i].uploaded || assignments[i].sent)
+                n++
+        }
+        return n
+    }
+
+    function armedUploadedCount() {
+        var n = 0
+        for (var i = 0; i < assignments.length; i++) {
+            var a = assignments[i]
+            if (!(a.uploaded || a.sent))
+                continue
+            var v = _vehicleById(a.vehicleId)
+            if (v && v.armed)
+                n++
+        }
+        return n
+    }
+
+    function selectAllRadios() {
+        if (!_mvm || !_vehicles)
+            return
+        for (var i = 0; i < _vehicles.count; i++) {
+            var v = _vehicles.get(i)
+            if (v && v.gcsId)
+                _mvm.selectVehicle(v.gcsId)
+        }
+    }
+
+    function _startArmedSurvey(v) {
+        if (!v || !v.armed)
+            return false
+        var modes = []
+        try {
+            modes = v.flightModes || []
+        } catch (e) {}
+        var want = v.px4Firmware ? ["Mission", "Auto"] : ["Auto", "AUTO", "Mission"]
+        for (var w = 0; w < want.length; w++) {
+            for (var i = 0; i < modes.length; i++) {
+                if (String(modes[i]).toLowerCase() === want[w].toLowerCase()) {
+                    v.flightMode = modes[i]
+                    return true
+                }
+            }
+        }
+        try {
+            v.flightMode = v.px4Firmware ? "Mission" : "Auto"
+            return true
+        } catch (e2) {}
+        return false
+    }
+
+    function startUploadedMissions() {
+        selectAllRadios()
+        var started = 0
+        var waiting = []
+        for (var i = 0; i < assignments.length; i++) {
+            var a = assignments[i]
+            if (!(a.uploaded || a.sent)) {
+                waiting.push(a.name + " no plan")
+                continue
+            }
+            var v = _vehicleById(a.vehicleId)
+            if (!v) {
+                waiting.push(a.name + " no radio")
+                continue
+            }
+            if (!v.armed) {
+                waiting.push(a.name + " disarmed")
+                continue
+            }
+            if (_startArmedSurvey(v))
+                started++
+            else
+                waiting.push(a.name + " no Auto/Mission mode")
+        }
+        statusText = started + " mission(s) started."
+        if (waiting.length)
+            statusText += " Waiting: " + waiting.join(", ") + ". ASTHRA will not arm."
     }
 
     function clearAll() {
@@ -708,6 +1018,7 @@ Rectangle {
         coverage.fileName = fileName
         coverage.assignments = assignments
         persistSharePercents()
+        coverage.plannedN = plannedN
         coverage.revision = (coverage.revision || 0) + 1
     }
 
@@ -733,6 +1044,8 @@ Rectangle {
             swarmBackend = mainWindow.swarmBackend
         if (!coverage)
             return
+        if (coverage.plannedN)
+            plannedN = Math.max(1, Math.min(16, coverage.plannedN))
         if (coverage.landPath && coverage.landPath.length >= 3) {
             landPath = coverage.landPath
             totalAreaM2 = coverage.totalAreaM2
@@ -744,6 +1057,10 @@ Rectangle {
 
     Component.onCompleted: {
         restoreFromCoverage()
+        if (mainWindow && typeof mainWindow.showFlyView === "function")
+            mainWindow.showFlyView(true)
+        if (mainWindow && landPath && landPath.length >= 3 && typeof mainWindow.fitCoverageLand === "function")
+            mainWindow.fitCoverageLand(landPath)
     }
 
     onCoverageChanged: restoreFromCoverage()
@@ -761,7 +1078,10 @@ Rectangle {
     Connections {
         target: _vehicles
         function onCountChanged() {
-            rebuildDrones(true)
+            if (_qgcCount > plannedN)
+                setPlannedN(_qgcCount)
+            else
+                rebuildDrones(true)
         }
     }
 
@@ -791,9 +1111,26 @@ Rectangle {
         }
     }
 
+    QGCLabel {
+        id: liveStatus
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: ScreenTools.defaultFontPixelWidth
+        wrapMode: Text.WordWrap
+        font.family: ScreenTools.fixedFontFamily
+        font.pointSize: ScreenTools.smallFontPointSize
+        color: qgcPal.text
+        text: statusText
+    }
+
     ScrollView {
         id: scroll
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: liveStatus.bottom
+        anchors.bottom: parent.bottom
+        anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.4
         clip: true
         padding: ScreenTools.defaultFontPixelWidth
 
@@ -814,7 +1151,7 @@ Rectangle {
                 font.family: ScreenTools.fixedFontFamily
                 font.pointSize: ScreenTools.smallFontPointSize
                 color: "#8B9199"
-                text: "Three steps. Same drones you fly. Does not arm or take off."
+                text: "1) Connect both radios. 2) Load KML. 3) Set each drone's % (must total 100). 4) Split. ASTHRA never arms."
             }
 
             // Step 1
@@ -847,7 +1184,7 @@ Rectangle {
                         }
                         Item { Layout.fillWidth: true }
                         QGCLabel {
-                            text: _droneCount > 0 ? (_droneCount + " ready") : "None yet"
+                            text: _droneCount + " drone(s)"
                             font.family: ScreenTools.fixedFontFamily
                             color: _droneCount > 0 ? qgcPal.colorGreen : qgcPal.colorYellow
                         }
@@ -863,11 +1200,60 @@ Rectangle {
                     QGCButton {
                         Layout.fillWidth: true
                         Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.8
-                        text: _droneCount > 0 ? "Drones found" : "Connect"
+                        text: _qgcCount > 0 ? (_qgcCount + " radio(s) linked") : "Connect USB radios"
                         font.family: ScreenTools.fixedFontFamily
                         font.weight: Font.Bold
-                        primary: _droneCount === 0
+                        primary: _qgcCount === 0
                         onClicked: connectRadios()
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScreenTools.defaultFontPixelWidth
+                        QGCLabel {
+                            text: "Fleet size"
+                            font.family: ScreenTools.fixedFontFamily
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        QGCButton {
+                            text: "−"
+                            enabled: plannedN > 1
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            onClicked: setPlannedN(plannedN - 1)
+                        }
+                        QGCLabel {
+                            text: plannedN.toString()
+                            font.family: ScreenTools.fixedFontFamily
+                            font.bold: true
+                            font.pointSize: ScreenTools.defaultFontPointSize * 1.2
+                            horizontalAlignment: Text.AlignHCenter
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                        }
+                        QGCButton {
+                            text: "+"
+                            enabled: plannedN < 16
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                            onClicked: setPlannedN(plannedN + 1)
+                        }
+                    }
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        visible: _qgcCount < plannedN
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pointSize: ScreenTools.smallFontPointSize
+                        color: qgcPal.colorYellow
+                        text: _qgcCount === 0
+                              ? "No radios yet. Split still uses " + plannedN + " drones. Plug in USB/UDP, or keep planning."
+                              : "GCS sees " + _qgcCount + " radio(s), fleet is " + plannedN + ". Extra rows stay planned until a radio is linked."
+                    }
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pointSize: ScreenTools.smallFontPointSize
+                        color: "#8B9199"
+                        text: "Each USB radio is its own vehicle (V1, V2, …) even if both use SYS 2. Unique SYSID is still required when two drones share one UDP port."
                     }
                     QGCLabel {
                         text: showUsbLinks ? "Hide USB ports" : "I am using USB"
@@ -930,7 +1316,7 @@ Rectangle {
                         font.family: ScreenTools.fixedFontFamily
                         text: fileName.length
                               ? (fileName + "  ·  " + formatArea(totalAreaM2) + "  ·  100%")
-                              : "Set scan size, then use the map — or open a KML polygon."
+                              : "Load a KML polygon first. Then set each drone's % and split."
                         color: fileName.length ? qgcPal.text : qgcPal.colorGrey
                         elide: Text.ElideMiddle
                     }
@@ -943,8 +1329,29 @@ Rectangle {
                         color: "#8B9199"
                         text: "KML sets the size. Clear land to use the slider."
                     }
+                    QGCButton {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 3.0
+                        text: fileName.length && fileName !== "Land on map" ? "Choose a different KML" : "Load KML file"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.weight: Font.Bold
+                        primary: landPath.length < 3
+                        onClicked: kmlDialog.open()
+                    }
+                    QGCLabel {
+                        text: showMapSquare ? "Hide map square" : "Or use a square on this map"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pointSize: ScreenTools.smallFontPointSize
+                        color: qgcPal.colorBlue
+                        font.underline: true
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: showMapSquare = !showMapSquare
+                        }
+                    }
                     RowLayout {
-                        visible: _mapLand || fileName.length === 0
+                        visible: showMapSquare && (_mapLand || fileName.length === 0)
                         Layout.fillWidth: true
                         QGCLabel {
                             text: "SCAN SIZE"
@@ -962,7 +1369,7 @@ Rectangle {
                     }
                     Slider {
                         id: scanSizeSlider
-                        visible: _mapLand || fileName.length === 0
+                        visible: showMapSquare && (_mapLand || fileName.length === 0)
                         Layout.fillWidth: true
                         from: 200
                         to: 5000
@@ -972,7 +1379,7 @@ Rectangle {
                         onMoved: setScanSize(value)
                     }
                     RowLayout {
-                        visible: _mapLand || fileName.length === 0
+                        visible: showMapSquare && (_mapLand || fileName.length === 0)
                         Layout.fillWidth: true
                         spacing: 6
                         Repeater {
@@ -994,7 +1401,7 @@ Rectangle {
                         }
                     }
                     QGCLabel {
-                        visible: _mapLand || fileName.length === 0
+                        visible: showMapSquare && (_mapLand || fileName.length === 0)
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         font.family: ScreenTools.fixedFontFamily
@@ -1003,20 +1410,13 @@ Rectangle {
                         text: "Zoom does not change size. This is the field the drones split."
                     }
                     QGCButton {
+                        visible: showMapSquare
                         Layout.fillWidth: true
                         Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.8
                         text: "Use land on this map"
                         font.family: ScreenTools.fixedFontFamily
                         font.weight: Font.Bold
-                        primary: landPath.length < 3
                         onClicked: landFromMap()
-                    }
-                    QGCButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.4
-                        text: fileName.length && fileName !== "Land on map" ? "Choose a different KML" : "Choose KML file"
-                        font.family: ScreenTools.fixedFontFamily
-                        onClicked: kmlDialog.open()
                     }
                     QGCLabel {
                         visible: landPath.length > 0
@@ -1093,15 +1493,10 @@ Rectangle {
                                     font.bold: true
                                 }
                                 QGCTextField {
-                                    text: percent.toString()
-                                    inputMethodHints: Qt.ImhDigitsOnly
                                     Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 8
                                     font.family: ScreenTools.fixedFontFamily
-                                    onTextChanged: {
-                                        var n = parseInt(text)
-                                        if (!isNaN(n) && n !== percent)
-                                            setPercent(index, n)
-                                    }
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                    text: percent.toFixed(0)
                                     onEditingFinished: {
                                         var n = parseInt(text)
                                         if (!isNaN(n))
@@ -1132,8 +1527,16 @@ Rectangle {
                         font.family: ScreenTools.fixedFontFamily
                         font.weight: Font.Bold
                         primary: true
-                        enabled: true
+                        enabled: landPath && landPath.length >= 3 && Math.abs(percentSum() - 100) < 0.6
                         onClicked: applySplit()
+                    }
+                    QGCButton {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.6
+                        text: "PREPARE SWARM"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.weight: Font.Bold
+                        onClicked: prepareSwarm()
                     }
                     QGCLabel {
                         visible: _droneCount > 0 && Math.abs(percentSum() - 100) >= 0.6
@@ -1260,24 +1663,50 @@ Rectangle {
                         font.weight: Font.Bold
                         onClicked: uploadSurveys()
                     }
+                    QGCButton {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 3.0
+                        text: armedUploadedCount() > 0 ? "Start uploaded missions" : "Start (arm first)"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.weight: Font.Bold
+                        enabled: readyTick >= 0 && uploadedCount() > 0
+                        onClicked: startUploadedMissions()
+                    }
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pointSize: ScreenTools.smallFontPointSize
+                        color: "#8B9199"
+                        text: "Start only runs on radios that already have a plan AND are armed. Arm from the left column or multi-vehicle panel."
+                    }
                 }
             }
 
+            QGCLabel {
+                Layout.fillWidth: true
+                text: "READY BOARD"
+                font.family: ScreenTools.fixedFontFamily
+                font.weight: Font.Bold
+                visible: assignments.length > 0
+            }
             Repeater {
                 model: assignments
                 delegate: Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: ScreenTools.defaultFontPixelHeight * 2.4
+                    implicitHeight: boardLabel.implicitHeight + 16
                     color: qgcPal.windowShadeDark
                     border.width: 1
                     border.color: modelData.color
                     QGCLabel {
-                        anchors.fill: parent
+                        id: boardLabel
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
                         anchors.margins: 8
-                        text: modelData.name + "   " + modelData.percent.toFixed(0) + "%   " + formatArea(modelData.areaM2) + (modelData.wpCount ? ("   " + modelData.wpCount + " wp") : "")
+                        wrapMode: Text.WordWrap
+                        text: assignmentStatus(modelData) + "   " + modelData.percent.toFixed(0) + "%   " + formatArea(modelData.areaM2) + (modelData.wpCount ? ("   " + modelData.wpCount + " wp") : "")
                         font.family: ScreenTools.fixedFontFamily
-                        elide: Text.ElideRight
-                        verticalAlignment: Text.AlignVCenter
                     }
                 }
             }
@@ -1296,15 +1725,22 @@ Rectangle {
 
     function getAvailablePorts() {
         var ports = []
-        var linkConfigs = QGroundControl.linkManager ? QGroundControl.linkManager.linkConfigurations : null
-        var acmPorts = ["/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2"]
-        for (var i = 0; i < acmPorts.length; i++) {
-            var port = acmPorts[i]
+        var live = []
+        if (QGroundControl.linkManager && typeof QGroundControl.linkManager.usbPrimarySerialPorts === "function")
+            live = QGroundControl.linkManager.usbPrimarySerialPorts()
+        else if (QGroundControl.linkManager && typeof QGroundControl.linkManager.usbSerialPorts === "function")
+            live = QGroundControl.linkManager.usbSerialPorts()
+        if (!live)
+            live = []
+        for (var i = 0; i < live.length; i++) {
+            var port = String(live[i])
+            var tail = port.replace(/^.*\//, "")
             var isConnected = false
-            if (linkConfigs) {
-                for (var j = 0; j < linkConfigs.count; j++) {
-                    var config = linkConfigs.get(j)
-                    if (config && config.portName === port) {
+            if (_vehicles) {
+                for (var v = 0; v < _vehicles.count; v++) {
+                    var veh = _vehicles.get(v)
+                    var n = radioPort(veh)
+                    if (n && (n === tail || port.indexOf(n) >= 0)) {
                         isConnected = true
                         break
                     }

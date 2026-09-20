@@ -137,6 +137,8 @@ public:
     Q_ENUM(CheckList)
 
     Q_PROPERTY(int                  id                          READ id                                                             CONSTANT)
+    Q_PROPERTY(int                  gcsId                       READ gcsId                                                          CONSTANT)
+    Q_PROPERTY(int                  fleetSlot                   READ fleetSlot                                                      NOTIFY fleetSlotChanged)
     Q_PROPERTY(AutoPilotPlugin*     autopilotPlugin             MEMBER _autopilotPlugin                                             CONSTANT)
     Q_PROPERTY(QGeoCoordinate       coordinate                  READ coordinate                                                     NOTIFY coordinateChanged)
     Q_PROPERTY(QGeoCoordinate       homePosition                READ homePosition                                                   NOTIFY homePositionChanged)
@@ -449,6 +451,9 @@ public:
 
     // Property accesors
     int id() const{ return _id; }
+    int gcsId() const { return _gcsId; }
+    int fleetSlot() const { return _fleetSlot; }
+    void setFleetSlot(int slot);
     int compId() const{ return _compID; }
     MAV_AUTOPILOT firmwareType() const { return _firmwareType; }
     MAV_TYPE vehicleType() const { return _vehicleType; }
@@ -609,6 +614,7 @@ public:
     ParameterManager*               parameterManager    () { return _parameterManager; }
     ParameterManager*               parameterManager    () const { return _parameterManager; }
     VehicleLinkManager*             vehicleLinkManager  () { return _vehicleLinkManager; }
+    VehicleLinkManager*             vehicleLinkManager  () const { return _vehicleLinkManager; }
     FTPManager*                     ftpManager          () { return _ftpManager; }
     ComponentInformationManager*    compInfoManager     () { return _componentInformationManager; }
     VehicleObjectAvoidance*         objectAvoidance     () { return _objectAvoidance; }
@@ -818,6 +824,7 @@ signals:
     void homePositionChanged            (const QGeoCoordinate& homePosition);
     void armedPositionChanged();
     void armedChanged                   (bool armed);
+    void fleetSlotChanged               ();
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
     void landingChanged                 (bool landing);
@@ -990,6 +997,8 @@ private:
     void _deleteCameraManager();
 
     int     _id;                    ///< Mavlink system id
+    int     _gcsId = 0;             ///< Unique GCS instance id (two radios may share a SYSID)
+    int     _fleetSlot = 0;         ///< 1-based operator slot (QGC uses unique SYSID; we cannot)
     int     _defaultComponentId;
     bool    _offlineEditingVehicle = false; ///< true: This Vehicle is a "disconnected" vehicle for ui use while offline editing
 

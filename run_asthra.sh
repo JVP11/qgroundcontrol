@@ -46,6 +46,6 @@ sleep 0.5
 
 echo "Launching ${APP_NAME}..."
 echo "  FLY   = world map (needs network for map tiles)"
-echo "  SWARM = indoor mission planner (connect drones via DUAL first)"
+echo "  SWARM = N-drone land split (USB radios can share SYSID; UDP same port cannot)"
 echo ""
 exec "./$BIN" "$@"

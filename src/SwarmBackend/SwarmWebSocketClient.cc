@@ -58,10 +58,11 @@ QVariantList SwarmWebSocketClient::drones() const
 void SwarmWebSocketClient::connectToBackend()
 {
     if (_connected) {
-        qWarning() << "Already connected to swarm backend";
         return;
     }
-    qDebug() << "Connecting to swarm backend:" << _serverUrl;
+    if (_reconnectFails == 0) {
+        qDebug() << "Connecting to swarm backend:" << _serverUrl;
+    }
     _webSocket.open(QUrl(_serverUrl));
 }
 
@@ -73,26 +74,35 @@ void SwarmWebSocketClient::disconnectFromBackend()
 
 void SwarmWebSocketClient::onConnected()
 {
-    qDebug() << "✓ Connected to swarm backend";
+    qDebug() << "Connected to swarm backend";
     _connected = true;
+    _reconnectFails = 0;
+    _reconnectTimer.setInterval(5000);
     _reconnectTimer.stop();
     emit connectedChanged();
 }
 
 void SwarmWebSocketClient::onDisconnected()
 {
-    qDebug() << "✗ Disconnected from swarm backend";
     _connected = false;
     emit connectedChanged();
-    _reconnectTimer.start();
+    if (!_reconnectTimer.isActive()) {
+        _reconnectTimer.start();
+    }
 }
 
 void SwarmWebSocketClient::onError(QAbstractSocket::SocketError error)
 {
-    QString errorMsg = QString("WebSocket error: %1").arg(_webSocket.errorString());
-    qWarning() << errorMsg;
-    emit errorOccurred(errorMsg);
-    if (!_connected) {
+    Q_UNUSED(error)
+    _reconnectFails++;
+    const QString errorMsg = QString("WebSocket error: %1").arg(_webSocket.errorString());
+    if (_reconnectFails == 1) {
+        qWarning() << "Swarm backend not running at" << _serverUrl
+                   << "- radios still work; silent retry continues";
+        emit errorOccurred(errorMsg);
+    }
+    if (!_connected && !_reconnectTimer.isActive()) {
+        _reconnectTimer.setInterval(_reconnectFails < 3 ? 5000 : 30000);
         _reconnectTimer.start();
     }
 }
@@ -100,7 +110,6 @@ void SwarmWebSocketClient::onError(QAbstractSocket::SocketError error)
 void SwarmWebSocketClient::attemptReconnect()
 {
     if (!_connected) {
-        qDebug() << "Attempting to reconnect to swarm backend...";
         connectToBackend();
     }
 }

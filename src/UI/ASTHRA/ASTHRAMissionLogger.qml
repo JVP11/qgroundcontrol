@@ -60,9 +60,10 @@ QtObject {
         _lastInitializedVehicle = vehicle
         activeVehicle = vehicle
         if (activeVehicle) {
-            activeVehicle.armedChanged.connect(onArmedChanged)
-            activeVehicle.flightModeChanged.connect(onFlightModeChanged)
-            activeVehicle.failsafeChanged.connect(onFailsafeChanged)
+            try { activeVehicle.armedChanged.connect(onArmedChanged) } catch (e) {}
+            try { activeVehicle.flightModeChanged.connect(onFlightModeChanged) } catch (e) {}
+            if (activeVehicle.failsafeChanged)
+                try { activeVehicle.failsafeChanged.connect(onFailsafeChanged) } catch (e) {}
         }
     }
 

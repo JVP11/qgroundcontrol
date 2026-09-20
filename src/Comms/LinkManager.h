@@ -69,6 +69,9 @@ public:
     Q_INVOKABLE void removeConfiguration(LinkConfiguration *config);
     /// This should only be used by Qml code
     Q_INVOKABLE void createConnectedLink(const LinkConfiguration *config);
+    Q_INVOKABLE int connectAvailableUsbRadios();
+    Q_INVOKABLE QStringList usbSerialPorts();
+    Q_INVOKABLE QStringList usbPrimarySerialPorts();
     Q_INVOKABLE void createMavlinkForwardingSupportLink();
     /// Called to signal app shutdown. Disconnects all links while turning off auto-connect.
     Q_INVOKABLE void shutdown();

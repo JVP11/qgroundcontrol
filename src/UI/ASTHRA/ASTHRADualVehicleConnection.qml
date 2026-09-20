@@ -39,11 +39,14 @@ Rectangle {
 
     Connections {
         target: QGroundControl.multiVehicleManager
-        function onVehiclesChanged() {
-            console.log("ASTHRA: Vehicles changed, count:", QGroundControl.multiVehicleManager.vehicles.count)
-        }
         function onActiveVehicleChanged() {
             console.log("ASTHRA: Active vehicle changed")
+        }
+    }
+    Connections {
+        target: QGroundControl.multiVehicleManager.vehicles
+        function onCountChanged() {
+            console.log("ASTHRA: Vehicles changed, count:", QGroundControl.multiVehicleManager.vehicles.count)
         }
     }
 
@@ -97,7 +100,7 @@ Rectangle {
 
                     QGCLabel {
                         width: parent.width
-                        text: "Connected Vehicles: " + QGroundControl.multiVehicleManager.vehicles.count.toString() + " / 3"
+                        text: "Connected Vehicles: " + QGroundControl.multiVehicleManager.vehicles.count.toString()
                         font.family: ScreenTools.fixedFontFamily
                         color: qgcPal.text
                         wrapMode: Text.WordWrap
@@ -106,7 +109,8 @@ Rectangle {
                     QGCLabel {
                         width: parent.width
                         text: "Active Vehicle: " + (QGroundControl.multiVehicleManager.activeVehicle ?
-                               "Vehicle " + QGroundControl.multiVehicleManager.activeVehicle.id : "None")
+                               "Vehicle " + QGroundControl.multiVehicleManager.activeVehicle.fleetSlot +
+                               "  SYS " + QGroundControl.multiVehicleManager.activeVehicle.id : "None")
                         font.family: ScreenTools.fixedFontFamily
                         color: qgcPal.text
                         wrapMode: Text.WordWrap
@@ -122,7 +126,7 @@ Rectangle {
 
                             QGCLabel {
                                 width: parent.width - statusIndicator.width - setActiveButton.width - parent.spacing * 2
-                                text: "Vehicle " + object.id + " (" + object.vehicleTypeString + ")"
+                                text: "Vehicle " + object.fleetSlot + "  SYS " + object.id + " (" + object.vehicleTypeString + ")"
                                 font.family: ScreenTools.fixedFontFamily
                                 color: qgcPal.text
                                 elide: Text.ElideRight
@@ -203,6 +207,18 @@ Rectangle {
 
                     QGCButton {
                         width: parent.width
+                        text: "Connect all USB radios"
+                        primary: true
+                        onClicked: {
+                            var n = 0
+                            if (QGroundControl.linkManager && typeof QGroundControl.linkManager.connectAvailableUsbRadios === "function")
+                                n = QGroundControl.linkManager.connectAvailableUsbRadios()
+                            console.log("ASTHRA: opened USB radios:", n)
+                        }
+                    }
+
+                    QGCButton {
+                        width: parent.width
                         text: "Enable Auto-Connect (UDP)"
                         onClicked: {
                             var autoConnectSettings = QGroundControl.settingsManager.autoConnectSettings
@@ -214,7 +230,7 @@ Rectangle {
 
                     QGCLabel {
                         width: parent.width
-                        text: "UDP Port: 14550 (Vehicle 1), 14551 (Vehicle 2), 14552 (Vehicle 3)"
+                        text: "UDP: vehicle N uses port 14550 + (N-1). Example: 14550, 14551, 14552, …"
                         wrapMode: Text.WordWrap
                         font.pointSize: ScreenTools.smallFontPointSize
                         color: qgcPal.textDisabled
@@ -286,11 +302,10 @@ Rectangle {
 
                     QGCLabel {
                         width: parent.width
-                        text: "1. Each vehicle needs a unique system ID (1, 2, and 3)\n" +
-                              "2. Connect Vehicle 1 via USB or UDP port 14550\n" +
-                              "3. Connect Vehicle 2 via UDP port 14551\n" +
-                              "4. Connect Vehicle 3 via UDP port 14552\n" +
-                              "5. All three appear in the vehicle list and SHOW SWARM"
+                        text: "1. USB: each radio is V1, V2, … even if both use SYS 2\n" +
+                              "2. Shared UDP: give each drone a unique SYSID, port 14550 + (N-1)\n" +
+                              "3. Open SWARM to set % split, survey, and upload per radio\n" +
+                              "4. Land split uses the live fleet count — not a fixed 2 or 3"
                         wrapMode: Text.WordWrap
                         font.family: ScreenTools.fixedFontFamily
                         color: qgcPal.text
@@ -310,51 +325,37 @@ Rectangle {
         if (vehicles.count === 0) {
             return "No vehicles connected"
         }
-        if (vehicles.count === 1) {
-            return "1 vehicle connected — connect 2 more"
+        var ids = []
+        for (var i = 0; i < vehicles.count; i++) {
+            ids.push(vehicles.get(i).id)
         }
-        if (vehicles.count === 2) {
-            return "2 vehicles connected — connect the third"
+        var unique = ids.filter(function(v, idx, a) { return a.indexOf(v) === idx })
+        if (unique.length < ids.length) {
+            return vehicles.count + " USB radio(s) linked. Shared SYS is OK — each cable is its own drone."
         }
-        if (vehicles.count >= 3) {
-            var ids = []
-            for (var i = 0; i < vehicles.count; i++) {
-                ids.push(vehicles.get(i).id)
-            }
-            var unique = ids.filter(function(v, idx, a) { return a.indexOf(v) === idx })
-            if (unique.length < ids.length) {
-                return "WARNING: two vehicles share the same system ID"
-            }
-            return "3 vehicles connected with unique system IDs"
-        }
+        return vehicles.count + " vehicle(s) connected"
     }
 
     function getAvailablePorts() {
         var ports = []
+        var live = []
+        if (QGroundControl.linkManager && typeof QGroundControl.linkManager.usbSerialPorts === "function")
+            live = QGroundControl.linkManager.usbSerialPorts()
+        if (!live || live.length === 0)
+            return ports
         var linkConfigs = QGroundControl.linkManager.linkConfigurations
-
-        // Check for /dev/ttyACM* ports
-        var acmPorts = ["/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2"]
-        for (var i = 0; i < acmPorts.length; i++) {
-            var port = acmPorts[i]
+        for (var i = 0; i < live.length; i++) {
+            var port = live[i]
             var isConnected = false
-
-            // Check if this port is already connected
             for (var j = 0; j < linkConfigs.count; j++) {
                 var config = linkConfigs.get(j)
-                if (config && config.portName === port) {
+                if (config && (config.portName === port || (config.portDisplayName && port.indexOf(config.portDisplayName) >= 0))) {
                     isConnected = true
                     break
                 }
             }
-
-            ports.push({
-                port: port,
-                index: i,
-                connected: isConnected
-            })
+            ports.push({ port: port, index: i, connected: isConnected })
         }
-
         return ports
     }
 

@@ -103,34 +103,42 @@ import QGroundControl.Controls
     QGCPalette { id: qgcPal }
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    property var _vehicle1: null
-    property var _vehicle2: null
-    property bool _dualVehicleMode: false
+    property var _vehicles: QGroundControl.multiVehicleManager.vehicles
+    property int _fleetCount: _vehicles ? _vehicles.count : 0
+    property bool _fleetMode: _fleetCount >= 2
 
-    function updateVehicles() {
-        var count = QGroundControl.multiVehicleManager.vehicles.count
-        _vehicle1 = (count > 0) ? QGroundControl.multiVehicleManager.vehicles.get(0) : null
-        _vehicle2 = (count > 1) ? QGroundControl.multiVehicleManager.vehicles.get(1) : null
-        _dualVehicleMode = count >= 2
-        console.log("ASTHRA LeftColumn: Vehicle count:", count, "V1:", _vehicle1 ? _vehicle1.id : "null", "V2:", _vehicle2 ? _vehicle2.id : "null", "Dual mode:", _dualVehicleMode)
+    function fleetColor(index) {
+        var colors = ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
+        var i = parseInt(index, 10)
+        if (isNaN(i) || i < 0)
+            i = 0
+        return colors[i % colors.length]
     }
 
-    Component.onCompleted: {
-        updateVehicles()
+    function fleetVehicle(index) {
+        if (!_vehicles || index < 0 || index >= _vehicles.count)
+            return null
+        return _vehicles.get(index)
     }
 
-    Connections {
-        target: QGroundControl.multiVehicleManager.vehicles
-        function onCountChanged() {
-            updateVehicles()
-        }
+    function slotOf(index) {
+        var veh = fleetVehicle(index)
+        return (veh && veh.fleetSlot) ? veh.fleetSlot : (index + 1)
     }
 
-    Connections {
-        target: QGroundControl.multiVehicleManager
-        function onActiveVehicleChanged(activeVehicle) {
-            updateVehicles()
-        }
+    function voltageOf(veh) {
+        return (veh && veh.battery && veh.battery.voltage) ? veh.battery.voltage.value : 0
+    }
+
+    function currentOf(veh) {
+        return (veh && veh.battery && veh.battery.current) ? veh.battery.current.value : 0
+    }
+
+    function voltageColor(v) {
+        if (v <= 0) return qgcPal.colorGrey
+        if (v < 10.5) return qgcPal.colorRed
+        if (v < 11.0) return qgcPal.colorOrange
+        return qgcPal.colorGreen
     }
             property real _moduleHeight: ScreenTools.defaultFontPixelHeight * 6.0  // Industrial standard - taller modules
             property real _labelWidth: ScreenTools.defaultFontPixelWidth * 12  // Industrial standard - wider labels
@@ -268,40 +276,36 @@ import QGroundControl.Controls
                     Connections {
                         target: QGroundControl.multiVehicleManager
                         function onActiveVehicleChanged() {
-                            // Update combo box when active vehicle changes - debounced
                             Qt.callLater(function() {
-                                var activeIndex = -1
                                 var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
-                                if (activeVehicle) {
-                                    for (var i = 0; i < vehicleCombo.model.length; i++) {
-                                        if (vehicleCombo.model[i].indexOf("Vehicle " + activeVehicle.id) >= 0) {
-                                            activeIndex = i
-                                            break
-                                        }
-                                    }
-                                }
-                                vehicleCombo.currentIndex = activeIndex
+                                vehicleCombo.currentIndex = activeVehicle && activeVehicle.fleetSlot ? (activeVehicle.fleetSlot - 1) : -1
                             })
                         }
                     }
 
                     function updateModel() {
                         var list = []
-                        var activeIndex = QGroundControl.multiVehicleManager.activeVehicleIndex
-                        for (var i = 0; i < QGroundControl.multiVehicleManager.vehicles.count; i++) {
-                            var vehicle = QGroundControl.multiVehicleManager.vehicles.get(i)
-                            list.push("Vehicle " + vehicle.id)
+                        var vehicles = QGroundControl.multiVehicleManager.vehicles
+                        for (var i = 0; i < vehicles.count; i++) {
+                            var vehicle = vehicles.get(i)
+                            var port = ""
+                            try {
+                                var pn = vehicle.vehicleLinkManager ? String(vehicle.vehicleLinkManager.primaryLinkName || "") : ""
+                                var m = pn.match(/ttyACM\d+|ttyUSB\d+|COM\d+/i)
+                                if (m)
+                                    port = "  " + m[0]
+                            } catch (e) {}
+                            list.push("Vehicle " + vehicle.fleetSlot + port + "  SYS " + vehicle.id)
                         }
                         vehicleCombo.model = list
-                        if (activeIndex >= 0 && activeIndex < list.length) {
-                            vehicleCombo.currentIndex = activeIndex
-                        } else {
-                            vehicleCombo.currentIndex = -1
-                        }
+                        var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
+                        vehicleCombo.currentIndex = activeVehicle && activeVehicle.fleetSlot ? (activeVehicle.fleetSlot - 1) : -1
                     }
 
                     onActivated: (index) => {
-                        QGroundControl.multiVehicleManager.activeVehicleIndex = index
+                        var vehicle = QGroundControl.multiVehicleManager.vehicles.get(index)
+                        if (vehicle)
+                            QGroundControl.multiVehicleManager.activeVehicle = vehicle
                     }
                 }
             }
@@ -402,7 +406,7 @@ import QGroundControl.Controls
                 }
 
                 QGCLabel {
-                    property bool commLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : true
+                    property bool commLost: (_activeVehicle && _activeVehicle.vehicleLinkManager) ? _activeVehicle.vehicleLinkManager.communicationLost : true
                     property bool healthy: _activeVehicle ? _activeVehicle.allSensorsHealthy : false
                     text: {
                         if (!_activeVehicle) return "STANDBY"
@@ -430,13 +434,11 @@ import QGroundControl.Controls
                     Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.2
                 }
 
-                // Single vehicle display
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    visible: !_dualVehicleMode
+                    visible: !_fleetMode
 
-                    // Military status indicator
                     Rectangle {
                         width: 8
                         height: 8
@@ -458,75 +460,33 @@ import QGroundControl.Controls
                     }
                 }
 
-                // Dual vehicle ARM display
-                RowLayout {
+                Flow {
                     Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 2
-                    visible: _dualVehicleMode
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelHeight * 0.2
-
+                    spacing: ScreenTools.defaultFontPixelWidth * 1.2
+                    visible: _fleetMode
+                    Repeater {
+                        model: controlColumn._fleetCount
                         RowLayout {
+                            property var veh: controlColumn.fleetVehicle(index)
                             spacing: ScreenTools.defaultFontPixelWidth * 0.3
-
                             Rectangle {
                                 width: 6
                                 height: 6
                                 radius: 3
-                                color: _vehicle1 && _vehicle1.armed ? qgcPal.colorRed : qgcPal.colorGreen
+                                color: veh && veh.armed ? "#C0392B" : "#2A8B55"
                                 border.width: 1
                                 border.color: Qt.darker(color, 1.2)
                             }
-
                             QGCLabel {
-                                text: "V1:"
+                                text: "V" + controlColumn.slotOf(index) + ":"
                                 font.family: ScreenTools.fixedFontFamily
                                 font.weight: Font.Bold
-                                color: qgcPal.colorBlue
+                                color: controlColumn.fleetColor(index)
                                 font.pointSize: ScreenTools.defaultFontPointSize * 0.9
                             }
-
                             QGCLabel {
-                                property bool armed: _vehicle1 ? _vehicle1.armed : false
-                                text: armed ? "ARM" : "DIS"
-                                color: armed ? qgcPal.colorRed : qgcPal.colorGreen
-                                font.weight: Font.Bold
-                                font.pointSize: ScreenTools.defaultFontPointSize * 0.95
-                                font.family: ScreenTools.fixedFontFamily
-                            }
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelHeight * 0.2
-
-                        RowLayout {
-                            spacing: ScreenTools.defaultFontPixelWidth * 0.3
-
-                            Rectangle {
-                                width: 6
-                                height: 6
-                                radius: 3
-                                color: _vehicle2 && _vehicle2.armed ? qgcPal.colorRed : qgcPal.colorGreen
-                                border.width: 1
-                                border.color: Qt.darker(color, 1.2)
-                            }
-
-                            QGCLabel {
-                                text: "V2:"
-                                font.family: ScreenTools.fixedFontFamily
-                                font.weight: Font.Bold
-                                color: qgcPal.colorGreen
-                                font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            }
-
-                            QGCLabel {
-                                property bool armed: _vehicle2 ? _vehicle2.armed : false
-                                text: armed ? "ARM" : "DIS"
-                                color: armed ? qgcPal.colorRed : qgcPal.colorGreen
+                                text: (veh && veh.armed) ? "ARM" : "DIS"
+                                color: (veh && veh.armed) ? "#C0392B" : "#2A8B55"
                                 font.weight: Font.Bold
                                 font.pointSize: ScreenTools.defaultFontPointSize * 0.95
                                 font.family: ScreenTools.fixedFontFamily
@@ -544,7 +504,7 @@ import QGroundControl.Controls
             color:              qgcPal.windowShadeDark
             border.width:       2
             border.color:       qgcPal.buttonBorder
-            visible:            _activeVehicle || _dualVehicleMode
+            visible:            _fleetCount > 0
 
             // Military corner brackets on panel
             Item {
@@ -580,9 +540,8 @@ import QGroundControl.Controls
                     Layout.fillWidth: true
                     spacing: ScreenTools.defaultFontPixelWidth * 0.3
 
-                    // Military status dot - Single vehicle
                     Rectangle {
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                         width: 5
                         height: 5
                         radius: 2.5
@@ -592,25 +551,20 @@ import QGroundControl.Controls
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
 
-                    // Dual vehicle status dots
                     RowLayout {
-                        visible: _dualVehicleMode
-                        spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                        Rectangle {
-                            width: 4
-                            height: 4
-                            radius: 2
-                            color: _vehicle1 && _vehicle1.battery && _vehicle1.battery.voltage.value > 10.5 ? qgcPal.colorGreen : qgcPal.colorRed
-                            border.width: 1
-                            border.color: Qt.darker(color, 1.2)
-                        }
-                        Rectangle {
-                            width: 4
-                            height: 4
-                            radius: 2
-                            color: _vehicle2 && _vehicle2.battery && _vehicle2.battery.voltage.value > 10.5 ? qgcPal.colorGreen : qgcPal.colorRed
-                            border.width: 1
-                            border.color: Qt.darker(color, 1.2)
+                        visible: _fleetMode
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.4
+                        Repeater {
+                            model: controlColumn._fleetCount
+                            Rectangle {
+                                property var veh: controlColumn.fleetVehicle(index)
+                                width: 4
+                                height: 4
+                                radius: 2
+                                color: veh && veh.battery && veh.battery.voltage.value > 10.5 ? "#2A8B55" : "#C0392B"
+                                border.width: 1
+                                border.color: Qt.darker(color, 1.2)
+                            }
                         }
                     }
 
@@ -621,27 +575,19 @@ import QGroundControl.Controls
                         font.letterSpacing: 1.5
                         font.family:    ScreenTools.fixedFontFamily
                         color:          qgcPal.buttonBorder
-                        Layout.fillWidth: !_dualVehicleMode
+                        Layout.fillWidth: !_fleetMode
                     }
 
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V1"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorBlue
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                    }
-
-                    QGCLabel {
-                        visible: _dualVehicleMode
-                        text:           "V2"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                        font.weight:    Font.Bold
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.colorGreen
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                    Repeater {
+                        model: _fleetMode ? controlColumn._fleetCount : 0
+                        QGCLabel {
+                            text:           "V" + controlColumn.slotOf(index)
+                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
+                            font.weight:    Font.Bold
+                            font.family:    ScreenTools.fixedFontFamily
+                            color:          controlColumn.fleetColor(index)
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                        }
                     }
                 }
 
@@ -658,69 +604,28 @@ import QGroundControl.Controls
                         Layout.preferredWidth: _labelWidth
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
-                    // Single vehicle voltage
                     QGCLabel {
-                        visible: !_dualVehicleMode
-                        property real voltage: (_activeVehicle && _activeVehicle.battery && _activeVehicle.battery.voltage) ? _activeVehicle.battery.voltage.value : 0
-                        text:       padString(voltage.toFixed(2), 6) + " V"
-                        color:      getVoltageColor(voltage)
+                        visible: !_fleetMode
+                        property real voltage: controlColumn.voltageOf(_activeVehicle)
+                        text:       voltage.toFixed(2) + " V"
+                        color:      controlColumn.voltageColor(voltage)
                         font.family: ScreenTools.fixedFontFamily
                         font.weight: Font.Bold
                         Layout.preferredWidth: _valueWidth
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         horizontalAlignment: Text.AlignRight
-
-                        function padString(str, width) {
-                            while (str.length < width) str = " " + str
-                            return str
-                        }
-
-                        function getVoltageColor(v) {
-                            if (v <= 0) return qgcPal.colorGrey
-                            if (v < 10.5) return qgcPal.colorRed
-                            if (v < 11.0) return qgcPal.colorOrange
-                            return qgcPal.colorGreen
-                        }
                     }
 
-                    // Dual vehicle voltage display
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelWidth * 2
-                        visible: _dualVehicleMode
-
+                    Repeater {
+                        model: _fleetMode ? controlColumn._fleetCount : 0
                         QGCLabel {
-                            property real voltage: (_vehicle1 && _vehicle1.battery && _vehicle1.battery.voltage) ? _vehicle1.battery.voltage.value : 0
+                            property real voltage: controlColumn.voltageOf(controlColumn.fleetVehicle(index))
                             text: voltage.toFixed(2) + "V"
-                            color: getVoltageColor(voltage)
+                            color: controlColumn.voltageColor(voltage)
                             font.family: ScreenTools.fixedFontFamily
                             font.weight: Font.Bold
                             font.pointSize: ScreenTools.defaultFontPointSize * 0.9
                             Layout.fillWidth: true
-
-                            function getVoltageColor(v) {
-                                if (v <= 0) return qgcPal.colorGrey
-                                if (v < 10.5) return qgcPal.colorRed
-                                if (v < 11.0) return qgcPal.colorOrange
-                                return qgcPal.colorGreen
-                            }
-                        }
-
-                        QGCLabel {
-                            property real voltage: (_vehicle2 && _vehicle2.battery && _vehicle2.battery.voltage) ? _vehicle2.battery.voltage.value : 0
-                            text: voltage.toFixed(2) + "V"
-                            color: getVoltageColor(voltage)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            Layout.fillWidth: true
-
-                            function getVoltageColor(v) {
-                                if (v <= 0) return qgcPal.colorGrey
-                                if (v < 10.5) return qgcPal.colorRed
-                                if (v < 11.0) return qgcPal.colorOrange
-                                return qgcPal.colorGreen
-                            }
                         }
                     }
                 }
@@ -738,44 +643,24 @@ import QGroundControl.Controls
                         Layout.preferredWidth: _labelWidth
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
-                    // Single vehicle current
                     QGCLabel {
-                        property real current: (_activeVehicle && _activeVehicle.battery && _activeVehicle.battery.current) ? _activeVehicle.battery.current.value : 0
-                        text:       padString(current.toFixed(2), 6) + " A"
+                        property real current: controlColumn.currentOf(_activeVehicle)
+                        text:       current.toFixed(2) + " A"
                         color:      current > 0 ? qgcPal.text : qgcPal.colorGrey
                         font.family: ScreenTools.fixedFontFamily
                         font.weight: Font.Bold
                         Layout.preferredWidth: _valueWidth
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         horizontalAlignment: Text.AlignRight
-                        visible: !_dualVehicleMode
-
-                        function padString(str, width) {
-                            while (str.length < width) str = " " + str
-                            return str
-                        }
+                        visible: !_fleetMode
                     }
 
-                    // Dual vehicle current display
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelWidth * 2
-                        visible: _dualVehicleMode
-
+                    Repeater {
+                        model: _fleetMode ? controlColumn._fleetCount : 0
                         QGCLabel {
-                            property real current: (_vehicle1 && _vehicle1.battery && _vehicle1.battery.current) ? _vehicle1.battery.current.value : 0
-                            text: "V1: " + current.toFixed(1) + "A"
-                            color: current > 0 ? qgcPal.colorBlue : qgcPal.colorGrey
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            Layout.fillWidth: true
-                        }
-
-                        QGCLabel {
-                            property real current: (_vehicle2 && _vehicle2.battery && _vehicle2.battery.current) ? _vehicle2.battery.current.value : 0
-                            text: "V2: " + current.toFixed(1) + "A"
-                            color: current > 0 ? qgcPal.colorGreen : qgcPal.colorGrey
+                            property real current: controlColumn.currentOf(controlColumn.fleetVehicle(index))
+                            text: "V" + controlColumn.slotOf(index) + ": " + current.toFixed(1) + "A"
+                            color: current > 0 ? controlColumn.fleetColor(index) : "#808080"
                             font.family: ScreenTools.fixedFontFamily
                             font.weight: Font.Bold
                             font.pointSize: ScreenTools.defaultFontPointSize * 0.9
@@ -814,7 +699,7 @@ import QGroundControl.Controls
                 opacity: 0.3
             }
 
-            visible:            _activeVehicle || _dualVehicleMode
+            visible:            _fleetCount > 0
 
             ColumnLayout {
                 anchors.fill:       parent
@@ -858,41 +743,31 @@ import QGroundControl.Controls
                         opacity:    0.7
                         Layout.preferredWidth: _labelWidth
                     }
-                    // Single vehicle failsafe
                     QGCLabel {
-                        property bool failsafe: _activeVehicle ? _activeVehicle.failsafe : false
+                        property bool failsafe: !!(!_activeVehicle ? false : _activeVehicle.failsafe)
                         text:       failsafe ? "ACTIVE" : "NORMAL"
                         color:      failsafe ? qgcPal.colorRed : qgcPal.colorGreen
                         font.weight: Font.Bold
                         font.family: ScreenTools.fixedFontFamily
                         Layout.preferredWidth: _valueWidth
-                        visible: !_dualVehicleMode
+                        visible: !_fleetMode
                     }
 
-                    // Dual vehicle failsafe display
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelWidth * 2
-                        visible: _dualVehicleMode
-
-                        QGCLabel {
-                            property bool failsafe: _vehicle1 ? _vehicle1.failsafe : false
-                            text: "V1: " + (failsafe ? "FAIL" : "OK")
-                            color: failsafe ? qgcPal.colorRed : qgcPal.colorGreen
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            Layout.fillWidth: true
-                        }
-
-                        QGCLabel {
-                            property bool failsafe: _vehicle2 ? _vehicle2.failsafe : false
-                            text: "V2: " + (failsafe ? "FAIL" : "OK")
-                            color: failsafe ? qgcPal.colorRed : qgcPal.colorGreen
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            Layout.fillWidth: true
+                        spacing: ScreenTools.defaultFontPixelWidth * 1.0
+                        visible: _fleetMode
+                        Repeater {
+                            model: controlColumn._fleetCount
+                            QGCLabel {
+                                property var veh: controlColumn.fleetVehicle(index)
+                                property bool failsafe: !!(!veh ? false : veh.failsafe)
+                                text: "V" + controlColumn.slotOf(index) + ": " + (failsafe ? "FAIL" : "OK")
+                                color: failsafe ? "#C0392B" : "#2A8B55"
+                                font.family: ScreenTools.fixedFontFamily
+                                font.weight: Font.Bold
+                                font.pointSize: ScreenTools.defaultFontPointSize * 0.9
+                            }
                         }
                     }
                 }
@@ -1001,13 +876,12 @@ import QGroundControl.Controls
         QGCButton {
             Layout.fillWidth: true
             Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.5
-            text:           mainWindow.swarmOverlayEnabled ? "HIDE SWARM" : "SHOW SWARM"
+            text:           "SWARM"
             font.family:    ScreenTools.fixedFontFamily
             font.weight:    Font.Bold
             font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-            backgroundColor: mainWindow.swarmOverlayEnabled ? "#534AB7" : qgcPal.button
-            primary:        mainWindow.swarmOverlayEnabled
-            onClicked:      mainWindow.toggleSwarmOverlay()
+            primary:        true
+            onClicked:      mainWindow.showSwarmCoverage()
         }
 
         }

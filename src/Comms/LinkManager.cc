@@ -21,6 +21,8 @@
 #include "TCPLink.h"
 #include "UDPLink.h"
 
+#include <QtCore/QFileInfo>
+
 #ifdef QGC_ENABLE_BLUETOOTH
 #include "BluetoothLink.h"
 #endif
@@ -1013,15 +1015,117 @@ bool LinkManager::_portAlreadyConnected(const QString &portName)
     QMutexLocker locker(&_linksMutex);
 
     const QString searchPort = portName.trimmed();
+    if (searchPort.isEmpty()) {
+        return false;
+    }
+    const QString searchFile = QFileInfo(searchPort).fileName();
+    const QString searchTail = SerialConfiguration::cleanPortDisplayName(searchPort);
+
     for (const SharedLinkInterfacePtr &linkInterface : _rgLinks) {
         const SharedLinkConfigurationPtr linkConfig = linkInterface->linkConfiguration();
         const SerialConfiguration* const serialConfig = qobject_cast<const SerialConfiguration*>(linkConfig.get());
-        if (serialConfig && (serialConfig->portName() == searchPort)) {
+        if (!serialConfig) {
+            continue;
+        }
+        const QString have = serialConfig->portName().trimmed();
+        const QString haveFile = QFileInfo(have).fileName();
+        if (have == searchPort || haveFile == searchFile) {
+            return true;
+        }
+        if (!searchTail.isEmpty() && (serialConfig->portDisplayName() == searchTail || haveFile == searchTail)) {
             return true;
         }
     }
 
     return false;
+}
+
+int LinkManager::connectAvailableUsbRadios()
+{
+#ifndef QGC_NO_SERIAL_LINK
+    if (_connectionsSuspendedMsg()) {
+        return 0;
+    }
+
+    if (_autoConnectSettings) {
+        _autoConnectSettings->autoConnectPixhawk()->setRawValue(true);
+        _autoConnectSettings->autoConnectSiKRadio()->setRawValue(true);
+    }
+
+    QList<QGCSerialPortInfo> portList = QGCSerialPortInfo::availablePorts();
+    _filterCompositePorts(portList);
+
+    int opened = 0;
+    for (const QGCSerialPortInfo &portInfo : portList) {
+        QGCSerialPortInfo::BoardType_t boardType = QGCSerialPortInfo::BoardTypeUnknown;
+        QString boardName;
+        if (!portInfo.getBoardInfo(boardType, boardName)) {
+            continue;
+        }
+        if ((boardType == QGCSerialPortInfo::BoardTypeRTKGPS) || portInfo.isBootloader()) {
+            continue;
+        }
+        if (_portAlreadyConnected(portInfo.systemLocation())) {
+            continue;
+        }
+
+        SerialConfiguration *pSerialConfig = new SerialConfiguration(tr("%1 on %2").arg(boardName, portInfo.portName().trimmed()));
+        if (boardType == QGCSerialPortInfo::BoardTypePixhawk) {
+            pSerialConfig->setUsbDirect(true);
+        }
+        pSerialConfig->setBaud((boardType == QGCSerialPortInfo::BoardTypeSiKRadio) ? 57600 : 115200);
+        pSerialConfig->setDynamic(true);
+        pSerialConfig->setPortName(portInfo.systemLocation());
+        pSerialConfig->setAutoConnect(true);
+
+        SharedLinkConfigurationPtr sharedConfig(pSerialConfig);
+        if (createConnectedLink(sharedConfig)) {
+            qCInfo(LinkManagerLog) << "USB radio opened" << portInfo.systemLocation() << boardName;
+            opened++;
+        }
+    }
+    return opened;
+#else
+    return 0;
+#endif
+}
+
+QStringList LinkManager::usbSerialPorts()
+{
+#ifndef QGC_NO_SERIAL_LINK
+    _updateSerialPorts();
+    QStringList out;
+    for (const QString &port : _commPortList) {
+        if (port.contains(QLatin1String("ttyACM"), Qt::CaseInsensitive)
+                || port.contains(QLatin1String("ttyUSB"), Qt::CaseInsensitive)
+                || port.contains(QLatin1String("COM"), Qt::CaseInsensitive)) {
+            out.append(port);
+        }
+    }
+    return out;
+#else
+    return {};
+#endif
+}
+
+QStringList LinkManager::usbPrimarySerialPorts()
+{
+#ifndef QGC_NO_SERIAL_LINK
+    QList<QGCSerialPortInfo> portList = QGCSerialPortInfo::availablePorts();
+    _filterCompositePorts(portList);
+    QStringList out;
+    for (const QGCSerialPortInfo &info : portList) {
+        const QString port = info.systemLocation().trimmed();
+        if (port.contains(QLatin1String("ttyACM"), Qt::CaseInsensitive)
+                || port.contains(QLatin1String("ttyUSB"), Qt::CaseInsensitive)
+                || port.contains(QLatin1String("COM"), Qt::CaseInsensitive)) {
+            out.append(port);
+        }
+    }
+    return out;
+#else
+    return {};
+#endif
 }
 
 void LinkManager::_updateSerialPorts()

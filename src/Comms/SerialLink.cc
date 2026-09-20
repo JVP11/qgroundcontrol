@@ -13,6 +13,7 @@
 #include <QtCore/QSettings>
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
+#include <QtCore/QElapsedTimer>
 
 QGC_LOGGING_CATEGORY(SerialLinkLog, "Comms.SerialLink")
 
@@ -369,25 +370,30 @@ void SerialWorker::_onPortBytesWritten(qint64 bytes) const
 
 void SerialWorker::_onPortErrorOccurred(QSerialPort::SerialPortError portError)
 {
+    if (portError == QSerialPort::NoError) {
+        qCDebug(SerialLinkLog) << "About to open port" << _port->portName();
+        return;
+    }
+
+    if ((portError == QSerialPort::ResourceError) || (portError == QSerialPort::PermissionError)) {
+        if (_serialConfig->isAutoConnect()) {
+            return;
+        }
+        if (portError == QSerialPort::ResourceError) {
+            static QElapsedTimer resourceErrorLog;
+            if (resourceErrorLog.isValid() && !resourceErrorLog.hasExpired(2000)) {
+                return;
+            }
+            resourceErrorLog.start();
+        }
+    }
+
     const QString errorString = _port->errorString();
     qCWarning(SerialLinkLog) << "Port error:" << portError << errorString;
 
     switch (portError) {
-    case QSerialPort::NoError:
-        qCDebug(SerialLinkLog) << "About to open port" << _port->portName();
-        return;
     case QSerialPort::ResourceError:
-        // We get this when a usb cable is unplugged or port doesn't exist
-        // For auto-connect, silently ignore ResourceError (port doesn't exist)
-        if (_serialConfig->isAutoConnect()) {
-            qCDebug(SerialLinkLog) << "Suppressing ResourceError for auto-connect on port:" << _port->portName();
-            return;
-        }
-        // Fallthrough for manual connections
     case QSerialPort::PermissionError:
-        if (_serialConfig->isAutoConnect()) {
-            return;
-        }
         break;
     default:
         break;

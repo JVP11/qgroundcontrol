@@ -229,6 +229,32 @@ bool QGCSerialPortInfo::getBoardInfo(QGCSerialPortInfo::BoardType_t &boardType, 
         }
     }
 
+#ifndef Q_OS_ANDROID
+    // ASTHRA: each physical USB cable is its own radio. Generic CDC ACM
+    // (Pixhawk, Cube, many SiK clones) is often missing from USBBoardInfo.json.
+    const QString loc = systemLocation();
+    const QString blob = (description() + QLatin1Char(' ') + manufacturer() + QLatin1Char(' ') + loc).toLower();
+    if (loc.contains(QLatin1String("ttyACM"), Qt::CaseInsensitive)
+            || blob.contains(QLatin1String("cdc acm"))
+            || blob.contains(QLatin1String("stm32 virtual"))
+            || blob.contains(QLatin1String("pixhawk"))
+            || blob.contains(QLatin1String("fmu"))) {
+        boardType = BoardTypePixhawk;
+        name = description().isEmpty() ? QStringLiteral("USB autopilot") : description();
+        return true;
+    }
+    if (loc.contains(QLatin1String("ttyUSB"), Qt::CaseInsensitive)) {
+        boardType = BoardTypeSiKRadio;
+        name = description().isEmpty() ? QStringLiteral("USB telemetry") : description();
+        return true;
+    }
+    if (loc.contains(QLatin1String("COM"), Qt::CaseInsensitive)) {
+        boardType = BoardTypePixhawk;
+        name = description().isEmpty() ? QStringLiteral("USB serial radio") : description();
+        return true;
+    }
+#endif
+
     return false;
 }
 
