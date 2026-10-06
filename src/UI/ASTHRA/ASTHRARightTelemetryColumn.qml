@@ -90,6 +90,9 @@ import QGroundControl.Controls
     property int _fleetCount: _vehicles ? _vehicles.count : 0
     property bool _fleetMode: _fleetCount >= 2
 
+    property real _moduleHeight: ScreenTools.defaultFontPixelHeight * 6.5
+    property real _labelWidth: ScreenTools.defaultFontPixelWidth * 12
+
     function fleetColor(index) {
         var colors = ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
         var i = parseInt(index, 10)
@@ -127,22 +130,179 @@ import QGroundControl.Controls
         return (veh && veh.fleetSlot) ? veh.fleetSlot : (index + 1)
     }
 
-    property real _moduleHeight: ScreenTools.defaultFontPixelHeight * 6.5  // Industrial standard - taller modules
-    property real _labelWidth: ScreenTools.defaultFontPixelWidth * 12  // Industrial standard - wider labels
-    property real _valueWidth: ScreenTools.defaultFontPixelWidth * 14  // Industrial standard - wider values
-
-    // Industrial Standard Padding Function
-    function padString(str, width) {
-        var s = str.toString()
-        while (s.length < width) s = " " + s
-        return s
+    function signed(v, decimals) {
+        return (v >= 0 ? "+" : "") + v.toFixed(decimals)
     }
 
-    // Get vehicle for display (for dual mode, show both)
-    function getVehicle(index) {
-        if (_fleetMode)
-            return fleetVehicle(index)
-        return _activeVehicle
+    function fieldValue(veh, key) {
+        switch (key) {
+        case "roll":    return vehNum(veh, "roll", 0)
+        case "pitch":   return vehNum(veh, "pitch", 0)
+        case "yaw":     return vehNum(veh, "heading", 0)
+        case "alt":     return vehNum(veh, "altitudeRelative", 0)
+        case "spd":     return vehNum(veh, "groundSpeed", 0)
+        case "vspd":    return vehNum(veh, "climbRate", 0)
+        case "hdop":    return (veh && veh.gps) ? factNum(veh.gps.hdop, 0) : 0
+        case "vdop":    return (veh && veh.gps) ? factNum(veh.gps.vdop, 0) : 0
+        case "sats":    return (veh && veh.gps) ? factNum(veh.gps.count, 0) : 0
+        }
+        return 0
+    }
+
+    // Fleet rows (compact) drop decimals and units so every drone fits in the column width.
+    function fieldText(veh, key, compact) {
+        if (!veh)
+            return "--"
+        var v = fieldValue(veh, key)
+        switch (key) {
+        case "roll":
+        case "pitch":   return compact ? signed(v, 1) : signed(v, 2) + "°"
+        case "yaw":     return compact ? v.toFixed(0) : v.toFixed(2) + "°"
+        case "alt":     return compact ? v.toFixed(1) : v.toFixed(2) + " m"
+        case "spd":     return compact ? v.toFixed(1) : v.toFixed(2) + " m/s"
+        case "vspd":    return compact ? signed(v, 1) : signed(v, 2) + " m/s"
+        case "hdop":
+        case "vdop":    return v <= 0 ? "--" : (compact ? v.toFixed(1) : v.toFixed(2))
+        case "sats":    return v.toFixed(0)
+        }
+        return "--"
+    }
+
+    function fieldColor(veh, key, base) {
+        if (key === "hdop" || key === "vdop") {
+            var d = fieldValue(veh, key)
+            var good = key === "hdop" ? 1.0 : 1.5
+            var ok = key === "hdop" ? 2.0 : 2.5
+            if (d <= 0)
+                return qgcPal.colorGrey
+            return d < good ? qgcPal.colorGreen : (d < ok ? qgcPal.colorYellow : qgcPal.colorOrange)
+        }
+        return base
+    }
+
+    /// Single vehicle: "LABEL: value" rows. Fleet: column header, then one row per vehicle.
+    component TelemetryModule: Rectangle {
+        id: module
+        property string title
+        property var    columns: []     // [{ key, label, unit }]
+        property Item   tc
+
+        QGCPalette { id: qgcPal }
+
+        Layout.fillWidth:       true
+        Layout.preferredHeight: Math.max(tc._moduleHeight * 0.75, content.implicitHeight + content.anchors.margins * 2)
+        color:                  qgcPal.windowShadeDark
+        border.width:           2
+        border.color:           qgcPal.buttonBorder
+
+        Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 2; width: 1; height: 6; color: qgcPal.colorBlue }
+        Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 2; width: 6; height: 1; color: qgcPal.colorBlue }
+        Rectangle { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 2; width: 1; height: 6; color: qgcPal.colorBlue }
+        Rectangle { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 2; width: 6; height: 1; color: qgcPal.colorBlue }
+
+        Rectangle {
+            anchors.fill:       parent
+            anchors.margins:    1
+            color:              "transparent"
+            border.width:       1
+            border.color:       Qt.darker(qgcPal.windowShadeDark, 1.2)
+        }
+
+        ColumnLayout {
+            id:                 content
+            anchors.left:       parent.left
+            anchors.right:      parent.right
+            anchors.top:        parent.top
+            anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.6
+            spacing:            ScreenTools.defaultFontPixelWidth * 0.3
+
+            QGCLabel {
+                text:               module.title + (tc._fleetMode ? "  ·  " + tc._fleetCount + " DRONES" : "")
+                font.pointSize:     ScreenTools.defaultFontPointSize * 0.9
+                font.weight:        Font.Bold
+                font.letterSpacing: 1.5
+                font.family:        ScreenTools.fixedFontFamily
+                color:              qgcPal.text
+                elide:              Text.ElideRight
+                Layout.fillWidth:   true
+            }
+
+            Repeater {
+                model: tc._fleetMode ? [] : module.columns
+                RowLayout {
+                    Layout.fillWidth:   true
+                    spacing:            ScreenTools.defaultFontPixelWidth * 0.5
+                    QGCLabel {
+                        text:                   modelData.label + ":"
+                        font.weight:            Font.DemiBold
+                        font.family:            ScreenTools.fixedFontFamily
+                        color:                  qgcPal.text
+                        Layout.preferredWidth:  tc._labelWidth * 0.8
+                    }
+                    QGCLabel {
+                        text:                   tc.fieldText(tc._activeVehicle, modelData.key, false)
+                        color:                  tc.fieldColor(tc._activeVehicle, modelData.key, qgcPal.text)
+                        font.family:            ScreenTools.fixedFontFamily
+                        font.weight:            Font.Bold
+                        font.pointSize:         ScreenTools.defaultFontPointSize * 1.1
+                        horizontalAlignment:    Text.AlignRight
+                        elide:                  Text.ElideLeft
+                        Layout.fillWidth:       true
+                    }
+                }
+            }
+
+            GridLayout {
+                visible:            tc._fleetMode
+                Layout.fillWidth:   true
+                columns:            module.columns.length + 1
+                columnSpacing:      ScreenTools.defaultFontPixelWidth * 0.5
+                rowSpacing:         ScreenTools.defaultFontPixelWidth * 0.2
+
+                QGCLabel {
+                    text:                   ""
+                    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 3.5
+                }
+                Repeater {
+                    model: tc._fleetMode ? module.columns : []
+                    QGCLabel {
+                        text:                   modelData.label + (modelData.unit ? " " + modelData.unit : "")
+                        font.pointSize:         ScreenTools.defaultFontPointSize * 0.8
+                        font.weight:            Font.DemiBold
+                        font.family:            ScreenTools.fixedFontFamily
+                        color:                  qgcPal.text
+                        opacity:                0.75
+                        horizontalAlignment:    Text.AlignRight
+                        elide:                  Text.ElideRight
+                        Layout.fillWidth:       true
+                        Layout.preferredWidth:  1
+                    }
+                }
+
+                Repeater {
+                    model: tc._fleetMode ? tc._fleetCount * (module.columns.length + 1) : 0
+                    QGCLabel {
+                        property int    _cols:      module.columns.length + 1
+                        property int    _row:       Math.floor(index / _cols)
+                        property int    _col:       index % _cols
+                        property var    _veh:       tc.fleetVehicle(_row)
+                        property var    _colDef:    _col > 0 ? module.columns[_col - 1] : null
+                        property color  _vColor:    tc.fleetColor(_row)
+
+                        text:                   _col === 0 ? "V" + tc.slotOf(_row)
+                                                           : tc.fieldText(_veh, _colDef.key, true)
+                        color:                  _col === 0 ? _vColor : tc.fieldColor(_veh, _colDef.key, _vColor)
+                        font.family:            ScreenTools.fixedFontFamily
+                        font.weight:            Font.Bold
+                        font.pointSize:         ScreenTools.defaultFontPointSize * 0.95
+                        horizontalAlignment:    _col === 0 ? Text.AlignLeft : Text.AlignRight
+                        elide:                  Text.ElideLeft
+                        Layout.fillWidth:       _col > 0
+                        Layout.preferredWidth:  _col === 0 ? ScreenTools.defaultFontPixelWidth * 3.5 : 1
+                    }
+                }
+            }
+        }
     }
 
     clip: true
@@ -158,719 +318,91 @@ import QGroundControl.Controls
         contentHeight:      rightCol.implicitHeight
 
         ColumnLayout {
-            id:      rightCol
-            width:   rightFlick.width
-            spacing: ScreenTools.defaultFontPixelWidth * 0.6
+            id:         rightCol
+            width:      rightFlick.width
+            spacing:    ScreenTools.defaultFontPixelWidth * 0.6
 
-        // ATTITUDE Block - Stacked Data Format with Industrial Depth
-        Rectangle {
-            Layout.fillWidth:   true
-            Layout.preferredHeight: _moduleHeight * 0.9
-            color:              qgcPal.windowShadeDark  // Industrial Slate
-            border.width:       2  // Stronger border
-            border.color:       qgcPal.buttonBorder  // Tactical Steel
-
-            // Military corner brackets on panel
-            Item {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.margins: 2
-                width: 6
-                height: 6
-            }
-                Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 1; height: 6; color: qgcPal.colorBlue }
-                Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
-
-            Item {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 2
-                width: 6
-                height: 6
-            }
-                Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 1; height: 6; color: qgcPal.colorBlue }
-                Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
-
-            // Tactical crosshair indicator in top-right
-            Item {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 4
-                width: 12
-                height: 12
-
-                // Horizontal line
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 8
-                    height: 1
-                    color: qgcPal.colorGreen
-                    opacity: 0.6
-                }
-
-                // Vertical line
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 1
-                    height: 8
-                    color: qgcPal.colorGreen
-                    opacity: 0.6
-                }
+            TelemetryModule {
+                tc:      telemetryColumn
+                title:   "ATTITUDE"
+                columns: [ { key: "roll", label: "ROLL" }, { key: "pitch", label: "PITCH" }, { key: "yaw", label: "YAW" } ]
             }
 
-            // Inner bevel effect
+            TelemetryModule {
+                tc:      telemetryColumn
+                title:   "ALT / SPEED"
+                columns: [ { key: "alt", label: "ALT", unit: "m" }, { key: "spd", label: "SPD" }, { key: "vspd", label: "VSPD" } ]
+            }
+
+            TelemetryModule {
+                tc:      telemetryColumn
+                title:   "GPS"
+                columns: [ { key: "hdop", label: "HDOP" }, { key: "vdop", label: "VDOP" }, { key: "sats", label: "SATS" } ]
+            }
+
             Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                color: "transparent"
-                border.width: 1
-                border.color: Qt.darker(qgcPal.windowShadeDark, 1.2)
-            }
+                Layout.fillWidth:       true
+                Layout.preferredHeight: _moduleHeight * 0.7
+                color:                  qgcPal.windowShadeDark
+                border.width:           2
+                border.color:           qgcPal.buttonBorder
 
-            // Top highlight for inset effect
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 2
-                height: 1
-                color: Qt.lighter(qgcPal.windowShadeDark, 1.1)
-                opacity: 0.3
-            }
+                Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 2; width: 1; height: 6; color: qgcPal.colorBlue }
+                Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 2; width: 6; height: 1; color: qgcPal.colorBlue }
+                Rectangle { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 2; width: 1; height: 6; color: qgcPal.colorBlue }
+                Rectangle { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 2; width: 6; height: 1; color: qgcPal.colorBlue }
 
-            ColumnLayout {
-                anchors.fill:       parent
-                anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
-                spacing:            ScreenTools.defaultFontPixelWidth * 0.3  // Tight spacing
+                ColumnLayout {
+                    anchors.fill:       parent
+                    anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
+                    spacing:            ScreenTools.defaultFontPixelWidth * 0.5
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.3
-                    QGCLabel {
-                        text:           "ATTITUDE"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                        font.weight:    Font.Bold
-                        font.letterSpacing: 1.5
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.text
-                        Layout.fillWidth: !_fleetMode
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                    RowLayout {
+                        Layout.fillWidth:   true
+                        spacing:            ScreenTools.defaultFontPixelWidth * 0.3
+
+                        Rectangle {
+                            width:              5
+                            height:             5
+                            radius:             2.5
+                            color:              qgcPal.colorGrey
+                            border.width:       1
+                            border.color:       Qt.darker(color, 1.2)
+                            Layout.alignment:   Qt.AlignLeft | Qt.AlignVCenter
+                        }
+
                         QGCLabel {
-                            text:           "V" + telemetryColumn.slotOf(index)
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                            font.weight:    Font.Bold
-                            font.family:    ScreenTools.fixedFontFamily
-                            color:          telemetryColumn.fleetColor(index)
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
+                            text:               "PAYLOAD STATUS"
+                            font.weight:        Font.Bold
+                            font.letterSpacing: 1.5
+                            font.family:        ScreenTools.fixedFontFamily
+                            color:              qgcPal.buttonBorder
+                            Layout.fillWidth:   true
                         }
                     }
-                }
 
-                // Table-like format: ROLL   +0.00°  (V1)  +0.00° (V2)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "ROLL:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real roll: telemetryColumn.vehNum(_activeVehicle, "roll", 0)
-                        text:       (roll >= 0 ? "+" : "") + padString(roll.toFixed(2), 6) + "°"
-                        color:      qgcPal.text
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
+                    RowLayout {
+                        Layout.fillWidth:   true
+                        spacing:            0
                         QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real roll: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "roll", 0)
-                            }
-                            text:       (roll >= 0 ? "+" : "") + padString(roll.toFixed(2), 6) + "°"
-                            color:      telemetryColumn.fleetColor(index)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
+                            text:                   "STATUS:"
+                            font.weight:            Font.DemiBold
+                            font.family:            ScreenTools.fixedFontFamily
+                            color:                  qgcPal.text
+                            opacity:                0.7
+                            Layout.preferredWidth:  _labelWidth
                         }
-                    }
-                }
-
-                // PITCH   +0.00°  (V1)  +0.00° (V2)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "PITCH:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real pitch: telemetryColumn.vehNum(_activeVehicle, "pitch", 0)
-                        text:       (pitch >= 0 ? "+" : "") + padString(pitch.toFixed(2), 6) + "°"
-                        color:      qgcPal.text
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
                         QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real pitch: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "pitch", 0)
-                            }
-                            text:       (pitch >= 0 ? "+" : "") + padString(pitch.toFixed(2), 6) + "°"
-                            color:      telemetryColumn.fleetColor(index)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-
-                // YAW    +0.00°  (V1)  +0.00° (V2)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "YAW:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real yaw: telemetryColumn.vehNum(_activeVehicle, "heading", 0)
-                        text:       padString(yaw.toFixed(2), 6) + "°"
-                        color:      qgcPal.text
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real yaw: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "heading", 0)
-                            }
-                            text:       padString(yaw.toFixed(2), 6) + "°"
-                            color:      telemetryColumn.fleetColor(index)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
+                            text:               "NO DATA"
+                            color:              qgcPal.colorGrey
+                            font.weight:        Font.Bold
+                            font.family:        ScreenTools.fixedFontFamily
+                            opacity:            0.7
+                            Layout.fillWidth:   true
                         }
                     }
                 }
             }
-        }
-
-        // ALT / SPEED Block - Stacked Data Format with Industrial Depth
-        Rectangle {
-            Layout.fillWidth:   true
-            Layout.preferredHeight: _moduleHeight * 0.9
-            color:              qgcPal.windowShadeDark
-            border.width:       2
-            border.color:       qgcPal.buttonBorder
-
-            // Inner bevel effect
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                color: "transparent"
-                border.width: 1
-                border.color: Qt.darker(qgcPal.windowShadeDark, 1.2)
-            }
-
-            // Top highlight for inset effect
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 2
-                height: 1
-                color: Qt.lighter(qgcPal.windowShadeDark, 1.1)
-                opacity: 0.3
-            }
-
-            ColumnLayout {
-                anchors.fill:       parent
-                anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
-                spacing:            ScreenTools.defaultFontPixelWidth * 0.3
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.3
-
-                    // Military status dot
-                    Rectangle {
-                        width: 5
-                        height: 5
-                        radius: 2.5
-                        color: _activeVehicle ? qgcPal.colorGreen : qgcPal.colorGrey
-                        border.width: 1
-                        border.color: Qt.darker(color, 1.2)
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-
-                    QGCLabel {
-                        text:           "ALT / SPEED"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                        font.weight:    Font.Bold
-                        font.letterSpacing: 1.5
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.text
-                        Layout.fillWidth: !_fleetMode
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            text:           "V" + telemetryColumn.slotOf(index)
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                            font.weight:    Font.Bold
-                            font.family:    ScreenTools.fixedFontFamily
-                            color:          telemetryColumn.fleetColor(index)
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                        }
-                    }
-                }
-
-                // ALT    0.00 m  (V1)  0.00 m (V2)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "ALT:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real altitude: telemetryColumn.vehNum(_activeVehicle, "altitudeRelative", 0)
-                        text:       padString(altitude.toFixed(2), 7) + " m"
-                        color:      qgcPal.text
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real altitude: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "altitudeRelative", 0)
-                            }
-                            text:       padString(altitude.toFixed(2), 7) + " m"
-                            color:      telemetryColumn.fleetColor(index)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-
-                // SPD    0.00 m/s  (V1)  0.00 m/s (V2)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "SPD:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real speed: telemetryColumn.vehNum(_activeVehicle, "groundSpeed", 0)
-                        text:       padString(speed.toFixed(2), 7) + " m/s"
-                        color:      qgcPal.text
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real speed: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "groundSpeed", 0)
-                            }
-                            text:       padString(speed.toFixed(2), 7) + " m/s"
-                            color:      telemetryColumn.fleetColor(index)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-
-                // VSPD   0.00 m/s  (V1)  0.00 m/s (V2)
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "VSPD:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real vSpeed: telemetryColumn.vehNum(_activeVehicle, "climbRate", 0)
-                        text:       (vSpeed >= 0 ? "+" : "") + padString(vSpeed.toFixed(2), 6) + " m/s"
-                        color:      vSpeed > 0 ? qgcPal.colorGreen : (vSpeed < 0 ? qgcPal.colorRed : qgcPal.text)
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real vSpeed: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return telemetryColumn.vehNum(telemetryColumn.fleetVehicle(index), "climbRate", 0)
-                            }
-                            text:       (vSpeed >= 0 ? "+" : "") + padString(vSpeed.toFixed(2), 6) + " m/s"
-                            color:      vSpeed > 0 ? qgcPal.colorGreen : (vSpeed < 0 ? qgcPal.colorRed : telemetryColumn.fleetColor(index))
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-            }
-        }
-
-        // GPS Block - Stacked Data Format with Industrial Depth
-        Rectangle {
-            Layout.fillWidth:   true
-            Layout.preferredHeight: _moduleHeight * 0.8
-            color:              qgcPal.windowShadeDark
-            border.width:       2
-            border.color:       qgcPal.buttonBorder
-
-            // Military corner brackets on panel
-            Item {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.margins: 2
-                width: 6
-                height: 6
-            }
-                Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 1; height: 6; color: qgcPal.colorBlue }
-                Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
-
-            Item {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 2
-                width: 6
-                height: 6
-            }
-                Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 1; height: 6; color: qgcPal.colorBlue }
-                Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
-
-            // Inner bevel effect
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                color: "transparent"
-                border.width: 1
-                border.color: Qt.darker(qgcPal.windowShadeDark, 1.2)
-            }
-
-            // Top highlight for inset effect
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 2
-                height: 1
-                color: Qt.lighter(qgcPal.windowShadeDark, 1.1)
-                opacity: 0.3
-            }
-
-            ColumnLayout {
-                anchors.fill:       parent
-                anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
-                spacing:            ScreenTools.defaultFontPixelWidth * 0.3
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.3
-                    QGCLabel {
-                        text:           "GPS"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                        font.weight:    Font.Bold
-                        font.letterSpacing: 1.5
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.text
-                        Layout.fillWidth: !_fleetMode
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            text:           "V" + telemetryColumn.slotOf(index)
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                            font.weight:    Font.Bold
-                            font.family:    ScreenTools.fixedFontFamily
-                            color:          telemetryColumn.fleetColor(index)
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                        }
-                    }
-                }
-
-                // HDOP   0.000
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "HDOP:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real hdop: (_activeVehicle && _activeVehicle.gpsHDOP) ? _activeVehicle.gpsHDOP.value : 0
-                        text:       padString(hdop.toFixed(3), 6)
-                        color:      hdop <= 0 ? qgcPal.colorGrey : (hdop < 1.0 ? qgcPal.colorGreen : (hdop < 2.0 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real hdop: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return (veh && veh.gpsHDOP) ? veh.gpsHDOP.value : 0
-                            }
-                            text:       padString(hdop.toFixed(3), 6)
-                            color:      hdop <= 0 ? qgcPal.colorGrey : (hdop < 1.0 ? qgcPal.colorGreen : (hdop < 2.0 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-
-                // VDOP   0.000
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "VDOP:"
-                        font.weight: Font.DemiBold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        Layout.preferredWidth: _labelWidth * 0.8
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
-                        Layout.fillWidth: true
-                        property real vdop: (_activeVehicle && _activeVehicle.gpsVDOP) ? _activeVehicle.gpsVDOP.value : 0
-                        text:       padString(vdop.toFixed(3), 6)
-                        color:      vdop <= 0 ? qgcPal.colorGrey : (vdop < 1.5 ? qgcPal.colorGreen : (vdop < 2.5 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        font.pointSize: ScreenTools.defaultFontPointSize * 1.1
-                        horizontalAlignment: Text.AlignRight
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    }
-                    Repeater {
-                        model: _fleetMode ? telemetryColumn._fleetCount : 0
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
-                            property real vdop: {
-                                var veh = telemetryColumn.fleetVehicle(index)
-                                return (veh && veh.gpsVDOP) ? veh.gpsVDOP.value : 0
-                            }
-                            text:       padString(vdop.toFixed(3), 6)
-                            color:      vdop <= 0 ? qgcPal.colorGrey : (vdop < 1.5 ? qgcPal.colorGreen : (vdop < 2.5 ? qgcPal.colorYellow : qgcPal.colorOrange))
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 1.0
-                            horizontalAlignment: Text.AlignRight
-                        }
-                    }
-                }
-            }
-        }
-
-        // Payload Status Module - Industrial Standard with Depth
-        Rectangle {
-            Layout.fillWidth:   true
-            Layout.preferredHeight: _moduleHeight * 0.7
-            color:              qgcPal.windowShadeDark
-            border.width:       2
-            border.color:       qgcPal.buttonBorder
-
-            // Military corner brackets on panel
-            Item {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.margins: 2
-                width: 6
-                height: 6
-            }
-                Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 1; height: 6; color: qgcPal.colorBlue }
-                Rectangle { anchors.left: parent.left; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
-
-            Item {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 2
-                width: 6
-                height: 6
-            }
-                Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 1; height: 6; color: qgcPal.colorBlue }
-                Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
-
-            // Inner bevel effect
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                color: "transparent"
-                border.width: 1
-                border.color: Qt.darker(qgcPal.windowShadeDark, 1.2)
-            }
-
-            // Top highlight for inset effect
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 2
-                height: 1
-                color: Qt.lighter(qgcPal.windowShadeDark, 1.1)
-                opacity: 0.3
-            }
-
-            ColumnLayout {
-                anchors.fill:       parent
-                anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
-                spacing:            ScreenTools.defaultFontPixelWidth * 0.5
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.3
-
-                    // Military status dot
-                    Rectangle {
-                        width: 5
-                        height: 5
-                        radius: 2.5
-                        color: qgcPal.colorGrey  // Default grey for payload
-                        border.width: 1
-                        border.color: Qt.darker(color, 1.2)
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-
-                    QGCLabel {
-                        text:           "PAYLOAD STATUS"
-                        font.pointSize: ScreenTools.defaultFontPointSize
-                        font.weight:    Font.Bold
-                        font.letterSpacing: 1.5
-                        font.family:    ScreenTools.fixedFontFamily
-                        color:          qgcPal.buttonBorder
-                        Layout.fillWidth: true
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-                    QGCLabel {
-                        text:       "STATUS:"
-                        font.weight: Font.DemiBold
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        opacity:    0.7
-                        Layout.preferredWidth: _labelWidth
-                    }
-                    QGCLabel {
-                        text:       "NO DATA"
-                        color:      qgcPal.colorGrey
-                        font.weight: Font.Bold
-                        font.family: ScreenTools.fixedFontFamily
-                        opacity:    0.7
-                        Layout.preferredWidth: _valueWidth
-                    }
-                }
-            }
-        }
-
         }
     }
 }
-

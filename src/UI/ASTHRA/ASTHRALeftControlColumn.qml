@@ -126,12 +126,39 @@ import QGroundControl.Controls
         return (veh && veh.fleetSlot) ? veh.fleetSlot : (index + 1)
     }
 
+    function batteryOf(veh) {
+        return (veh && veh.batteries && veh.batteries.count > 0) ? veh.batteries.get(0) : null
+    }
+
+    function batteryNum(veh, name) {
+        var b = batteryOf(veh)
+        if (!b || !b[name])
+            return 0
+        var n = Number(b[name].rawValue)
+        return isFinite(n) ? n : 0
+    }
+
     function voltageOf(veh) {
-        return (veh && veh.battery && veh.battery.voltage) ? veh.battery.voltage.value : 0
+        return batteryNum(veh, "voltage")
     }
 
     function currentOf(veh) {
-        return (veh && veh.battery && veh.battery.current) ? veh.battery.current.value : 0
+        return batteryNum(veh, "current")
+    }
+
+    function percentOf(veh) {
+        return batteryNum(veh, "percentRemaining")
+    }
+
+    function failsafeOf(veh) {
+        if (!veh)
+            return ""
+        if (veh.armed && veh.flightMode !== "" &&
+                (veh.flightMode === veh.rtlFlightMode || veh.flightMode === veh.smartRTLFlightMode || veh.flightMode === veh.landFlightMode))
+            return veh.flightMode.toUpperCase()
+        if (!veh.allSensorsHealthy)
+            return "SENSOR"
+        return ""
     }
 
     function voltageColor(v) {
@@ -500,7 +527,7 @@ import QGroundControl.Controls
         // Battery Module - Industrial Standard Tabular Format with Depth
         Rectangle {
             Layout.fillWidth:   true
-            Layout.preferredHeight: _moduleHeight
+            Layout.preferredHeight: Math.max(_moduleHeight * 0.8, batteryContent.implicitHeight + batteryContent.anchors.margins * 2)
             color:              qgcPal.windowShadeDark
             border.width:       2
             border.color:       qgcPal.buttonBorder
@@ -532,139 +559,127 @@ import QGroundControl.Controls
                 Rectangle { anchors.right: parent.right; anchors.top: parent.top; width: 6; height: 1; color: qgcPal.colorBlue }
 
             ColumnLayout {
-                anchors.fill:       parent
+                id:                 batteryContent
+                anchors.left:       parent.left
+                anchors.right:      parent.right
+                anchors.top:        parent.top
                 anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
-                spacing:            ScreenTools.defaultFontPixelWidth * 0.5
+                spacing:            ScreenTools.defaultFontPixelWidth * 0.3
 
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: ScreenTools.defaultFontPixelWidth * 0.3
 
                     Rectangle {
-                        visible: !_fleetMode
                         width: 5
                         height: 5
                         radius: 2.5
-                        color: _activeVehicle && _activeVehicle.battery && _activeVehicle.battery.voltage.value > 10.5 ? qgcPal.colorGreen : qgcPal.colorRed
+                        color: controlColumn.voltageColor(controlColumn.voltageOf(_activeVehicle))
                         border.width: 1
                         border.color: Qt.darker(color, 1.2)
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                     }
 
-                    RowLayout {
-                        visible: _fleetMode
-                        spacing: ScreenTools.defaultFontPixelWidth * 0.4
-                        Repeater {
-                            model: controlColumn._fleetCount
-                            Rectangle {
-                                property var veh: controlColumn.fleetVehicle(index)
-                                width: 4
-                                height: 4
-                                radius: 2
-                                color: veh && veh.battery && veh.battery.voltage.value > 10.5 ? "#2A8B55" : "#C0392B"
-                                border.width: 1
-                                border.color: Qt.darker(color, 1.2)
-                            }
-                        }
-                    }
-
                     QGCLabel {
-                        text:           "BATTERY"
+                        text:           "BATTERY" + (_fleetMode ? "  ·  " + _fleetCount + " DRONES" : "")
                         font.pointSize: ScreenTools.defaultFontPointSize
                         font.weight:    Font.Bold
                         font.letterSpacing: 1.5
                         font.family:    ScreenTools.fixedFontFamily
                         color:          qgcPal.buttonBorder
-                        Layout.fillWidth: !_fleetMode
-                    }
-
-                    Repeater {
-                        model: _fleetMode ? controlColumn._fleetCount : 0
-                        QGCLabel {
-                            text:           "V" + controlColumn.slotOf(index)
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.8
-                            font.weight:    Font.Bold
-                            font.family:    ScreenTools.fixedFontFamily
-                            color:          controlColumn.fleetColor(index)
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4
-                        }
+                        elide:          Text.ElideRight
+                        Layout.fillWidth: true
                     }
                 }
 
-                // Voltage - Industrial Standard Format
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
+                // Single vehicle
+                GridLayout {
+                    visible:            !_fleetMode
+                    Layout.fillWidth:   true
+                    columns:            2
+                    columnSpacing:      ScreenTools.defaultFontPixelWidth * 0.5
+                    rowSpacing:         ScreenTools.defaultFontPixelWidth * 0.3
+
+                    QGCLabel { text: "VOLT:"; font.weight: Font.DemiBold; font.family: ScreenTools.fixedFontFamily; color: qgcPal.text; opacity: 0.7; Layout.preferredWidth: _labelWidth }
                     QGCLabel {
-                        text:       "VOLT:"
-                        font.weight: Font.DemiBold
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        opacity:    0.7
-                        Layout.preferredWidth: _labelWidth
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
-                    QGCLabel {
-                        visible: !_fleetMode
                         property real voltage: controlColumn.voltageOf(_activeVehicle)
-                        text:       voltage.toFixed(2) + " V"
-                        color:      controlColumn.voltageColor(voltage)
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        Layout.preferredWidth: _valueWidth
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        horizontalAlignment: Text.AlignRight
+                        text:                   voltage.toFixed(2) + " V"
+                        color:                  controlColumn.voltageColor(voltage)
+                        font.family:            ScreenTools.fixedFontFamily
+                        font.weight:            Font.Bold
+                        horizontalAlignment:    Text.AlignRight
+                        Layout.fillWidth:       true
                     }
-
-                    Repeater {
-                        model: _fleetMode ? controlColumn._fleetCount : 0
-                        QGCLabel {
-                            property real voltage: controlColumn.voltageOf(controlColumn.fleetVehicle(index))
-                            text: voltage.toFixed(2) + "V"
-                            color: controlColumn.voltageColor(voltage)
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            Layout.fillWidth: true
-                        }
-                    }
-                }
-
-                // Current - Industrial Standard Format
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-                    QGCLabel {
-                        text:       "CURRENT:"
-                        font.weight: Font.DemiBold
-                        font.family: ScreenTools.fixedFontFamily
-                        color:      qgcPal.text
-                        opacity:    0.7
-                        Layout.preferredWidth: _labelWidth
-                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    }
+                    QGCLabel { text: "CURRENT:"; font.weight: Font.DemiBold; font.family: ScreenTools.fixedFontFamily; color: qgcPal.text; opacity: 0.7; Layout.preferredWidth: _labelWidth }
                     QGCLabel {
                         property real current: controlColumn.currentOf(_activeVehicle)
-                        text:       current.toFixed(2) + " A"
-                        color:      current > 0 ? qgcPal.text : qgcPal.colorGrey
-                        font.family: ScreenTools.fixedFontFamily
-                        font.weight: Font.Bold
-                        Layout.preferredWidth: _valueWidth
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        horizontalAlignment: Text.AlignRight
-                        visible: !_fleetMode
+                        text:                   current.toFixed(2) + " A"
+                        color:                  current > 0 ? qgcPal.text : qgcPal.colorGrey
+                        font.family:            ScreenTools.fixedFontFamily
+                        font.weight:            Font.Bold
+                        horizontalAlignment:    Text.AlignRight
+                        Layout.fillWidth:       true
+                    }
+                    QGCLabel { text: "REMAIN:"; font.weight: Font.DemiBold; font.family: ScreenTools.fixedFontFamily; color: qgcPal.text; opacity: 0.7; Layout.preferredWidth: _labelWidth }
+                    QGCLabel {
+                        property real pct: controlColumn.percentOf(_activeVehicle)
+                        text:                   pct > 0 ? pct.toFixed(0) + " %" : "--"
+                        color:                  pct <= 0 ? qgcPal.colorGrey : (pct < 25 ? qgcPal.colorRed : (pct < 50 ? qgcPal.colorYellow : qgcPal.colorGreen))
+                        font.family:            ScreenTools.fixedFontFamily
+                        font.weight:            Font.Bold
+                        horizontalAlignment:    Text.AlignRight
+                        Layout.fillWidth:       true
+                    }
+                }
+
+                // Fleet: one row per vehicle
+                GridLayout {
+                    visible:            _fleetMode
+                    Layout.fillWidth:   true
+                    columns:            4
+                    columnSpacing:      ScreenTools.defaultFontPixelWidth * 0.5
+                    rowSpacing:         ScreenTools.defaultFontPixelWidth * 0.2
+
+                    Repeater {
+                        model: ["", "VOLT", "AMP", "%"]
+                        QGCLabel {
+                            text:                   modelData
+                            font.pointSize:         ScreenTools.defaultFontPointSize * 0.8
+                            font.weight:            Font.DemiBold
+                            font.family:            ScreenTools.fixedFontFamily
+                            color:                  qgcPal.text
+                            opacity:                0.75
+                            horizontalAlignment:    Text.AlignRight
+                            Layout.fillWidth:       index > 0
+                            Layout.preferredWidth:  index === 0 ? ScreenTools.defaultFontPixelWidth * 3.5 : 1
+                        }
                     }
 
                     Repeater {
-                        model: _fleetMode ? controlColumn._fleetCount : 0
+                        model: _fleetMode ? controlColumn._fleetCount * 4 : 0
                         QGCLabel {
-                            property real current: controlColumn.currentOf(controlColumn.fleetVehicle(index))
-                            text: "V" + controlColumn.slotOf(index) + ": " + current.toFixed(1) + "A"
-                            color: current > 0 ? controlColumn.fleetColor(index) : "#808080"
-                            font.family: ScreenTools.fixedFontFamily
-                            font.weight: Font.Bold
-                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                            Layout.fillWidth: true
+                            property int    _row:   Math.floor(index / 4)
+                            property int    _col:   index % 4
+                            property var    _veh:   controlColumn.fleetVehicle(_row)
+                            property real   _v:     controlColumn.voltageOf(_veh)
+                            property real   _a:     controlColumn.currentOf(_veh)
+                            property real   _p:     controlColumn.percentOf(_veh)
+
+                            text: _col === 0 ? "V" + controlColumn.slotOf(_row)
+                                 : _col === 1 ? (_v > 0 ? _v.toFixed(1) : "--")
+                                 : _col === 2 ? (_a > 0 ? _a.toFixed(1) : "--")
+                                 : (_p > 0 ? _p.toFixed(0) : "--")
+                            color: _col === 0 ? controlColumn.fleetColor(_row)
+                                 : _col === 1 ? controlColumn.voltageColor(_v)
+                                 : _col === 3 ? (_p <= 0 ? qgcPal.colorGrey : (_p < 25 ? qgcPal.colorRed : (_p < 50 ? qgcPal.colorYellow : qgcPal.colorGreen)))
+                                 : (_a > 0 ? controlColumn.fleetColor(_row) : qgcPal.colorGrey)
+                            font.family:            ScreenTools.fixedFontFamily
+                            font.weight:            Font.Bold
+                            font.pointSize:         ScreenTools.defaultFontPointSize * 0.95
+                            horizontalAlignment:    _col === 0 ? Text.AlignLeft : Text.AlignRight
+                            elide:                  Text.ElideLeft
+                            Layout.fillWidth:       _col > 0
+                            Layout.preferredWidth:  _col === 0 ? ScreenTools.defaultFontPixelWidth * 3.5 : 1
                         }
                     }
                 }
@@ -715,7 +730,7 @@ import QGroundControl.Controls
                         width: 5
                         height: 5
                         radius: 2.5
-                        color: _activeVehicle && _activeVehicle.failsafe ? qgcPal.colorRed : qgcPal.colorGreen
+                        color: controlColumn.failsafeOf(_activeVehicle) !== "" ? qgcPal.colorRed : qgcPal.colorGreen
                         border.width: 1
                         border.color: Qt.darker(color, 1.2)
                         Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
@@ -744,9 +759,10 @@ import QGroundControl.Controls
                         Layout.preferredWidth: _labelWidth
                     }
                     QGCLabel {
-                        property bool failsafe: !!(!_activeVehicle ? false : _activeVehicle.failsafe)
-                        text:       failsafe ? "ACTIVE" : "NORMAL"
-                        color:      failsafe ? qgcPal.colorRed : qgcPal.colorGreen
+                        property string failsafe: controlColumn.failsafeOf(_activeVehicle)
+                        text:       failsafe !== "" ? failsafe : "NORMAL"
+                        color:      failsafe !== "" ? qgcPal.colorRed : qgcPal.colorGreen
+                        elide:      Text.ElideRight
                         font.weight: Font.Bold
                         font.family: ScreenTools.fixedFontFamily
                         Layout.preferredWidth: _valueWidth
@@ -761,9 +777,9 @@ import QGroundControl.Controls
                             model: controlColumn._fleetCount
                             QGCLabel {
                                 property var veh: controlColumn.fleetVehicle(index)
-                                property bool failsafe: !!(!veh ? false : veh.failsafe)
-                                text: "V" + controlColumn.slotOf(index) + ": " + (failsafe ? "FAIL" : "OK")
-                                color: failsafe ? "#C0392B" : "#2A8B55"
+                                property string failsafe: controlColumn.failsafeOf(veh)
+                                text: "V" + controlColumn.slotOf(index) + ": " + (failsafe !== "" ? failsafe : "OK")
+                                color: failsafe !== "" ? "#C0392B" : "#2A8B55"
                                 font.family: ScreenTools.fixedFontFamily
                                 font.weight: Font.Bold
                                 font.pointSize: ScreenTools.defaultFontPointSize * 0.9
