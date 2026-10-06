@@ -217,6 +217,23 @@ Rectangle {
         }
     }
 
+    // Institution logo; the source artwork is small, so keep it near native size
+    Image {
+        id:                 institutionLogo
+        anchors.left:       parent.left
+        anchors.top:        parent.top
+        anchors.margins:    ScreenTools.defaultFontPixelWidth * 2
+        source:             "qrc:/asthra/institution"
+        width:              Math.min(96, Math.max(64, Math.min(bootScreen.width, bootScreen.height) * 0.08))
+        height:             width
+        fillMode:           Image.PreserveAspectFit
+        smooth:             true
+        mipmap:             true
+        opacity:            0
+
+        NumberAnimation on opacity { running: institutionLogo.status === Image.Ready && bootScreen._started; to: 1; duration: 900; easing.type: Easing.OutQuad }
+    }
+
     // System checks + progress
     ColumnLayout {
         id:                 checkPanel

@@ -45,13 +45,22 @@ qt_add_qml_module(ASTHRAModule
 find_package(Qt6 REQUIRED COMPONENTS Quick3D)
 target_link_libraries(ASTHRAModule PRIVATE Qt6::Quick3D)
 
-# Boot screen logo: drop images/asthra_logo.png (or .svg/.jpg) here and rebuild
-file(GLOB ASTHRA_LOGO_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/images/asthra_logo.*")
-if(ASTHRA_LOGO_FILES)
-    list(GET ASTHRA_LOGO_FILES 0 ASTHRA_LOGO_FILE)
-    set_source_files_properties("${ASTHRA_LOGO_FILE}" PROPERTIES QT_RESOURCE_ALIAS "logo")
+# Boot screen logos: drop images/asthra_logo.* and images/institution_logo.* (png/svg/jpg) here and rebuild
+set(ASTHRA_BRANDING_FILES)
+foreach(_asthra_logo IN ITEMS asthra_logo:logo institution_logo:institution)
+    string(REPLACE ":" ";" _asthra_logo "${_asthra_logo}")
+    list(GET _asthra_logo 0 _asthra_logo_name)
+    list(GET _asthra_logo 1 _asthra_logo_alias)
+    file(GLOB _asthra_logo_files CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/images/${_asthra_logo_name}.*")
+    if(_asthra_logo_files)
+        list(GET _asthra_logo_files 0 _asthra_logo_file)
+        set_source_files_properties("${_asthra_logo_file}" PROPERTIES QT_RESOURCE_ALIAS "${_asthra_logo_alias}")
+        list(APPEND ASTHRA_BRANDING_FILES "${_asthra_logo_file}")
+    endif()
+endforeach()
+if(ASTHRA_BRANDING_FILES)
     qt_add_resources(ASTHRAModule "asthra_branding"
         PREFIX "/asthra"
-        FILES "${ASTHRA_LOGO_FILE}"
+        FILES ${ASTHRA_BRANDING_FILES}
     )
 endif()
