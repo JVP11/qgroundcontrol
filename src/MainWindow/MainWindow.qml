@@ -626,6 +626,38 @@ ApplicationWindow {
     // Fixed structure: Top Strip | Left Column | Central Workspace | Right Column | Bottom Bar
     // ============================================================================
 
+    // Boot screen: covers the window on start-up, then unloads itself
+    Loader {
+        id:             bootScreenLoader
+        anchors.fill:   parent
+        z:              100000
+        source:         "qrc:/qml/QGroundControl/UI/ASTHRA/ASTHRABootScreen.qml"
+        onLoaded:       item.forceActiveFocus()
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.error("Failed to load ASTHRABootScreen")
+                active = false
+            }
+        }
+
+        Binding {
+            target:     bootScreenLoader.item
+            when:       bootScreenLoader.status === Loader.Ready
+            property:   "mapReady"
+            value:      !!flyView._mapControl
+        }
+        Binding {
+            target:     bootScreenLoader.item
+            when:       bootScreenLoader.status === Loader.Ready
+            property:   "swarmConnected"
+            value:      swarmClient.connected
+        }
+        Connections {
+            target:     bootScreenLoader.item
+            function onFinished() { bootScreenLoader.active = false }
+        }
+    }
+
     // Top Status Strip
     Loader {
         id: topStatusStrip

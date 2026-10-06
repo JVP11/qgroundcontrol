@@ -10,6 +10,7 @@ qt_add_qml_module(ASTHRAModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
+        ASTHRABootScreen.qml
         ASTHRATopStatusStrip.qml
         ASTHRALeftControlColumn.qml
         ASTHRARightTelemetryColumn.qml
@@ -43,3 +44,14 @@ qt_add_qml_module(ASTHRAModule
 
 find_package(Qt6 REQUIRED COMPONENTS Quick3D)
 target_link_libraries(ASTHRAModule PRIVATE Qt6::Quick3D)
+
+# Boot screen logo: drop images/asthra_logo.png (or .svg/.jpg) here and rebuild
+file(GLOB ASTHRA_LOGO_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/images/asthra_logo.*")
+if(ASTHRA_LOGO_FILES)
+    list(GET ASTHRA_LOGO_FILES 0 ASTHRA_LOGO_FILE)
+    set_source_files_properties("${ASTHRA_LOGO_FILE}" PROPERTIES QT_RESOURCE_ALIAS "logo")
+    qt_add_resources(ASTHRAModule "asthra_branding"
+        PREFIX "/asthra"
+        FILES "${ASTHRA_LOGO_FILE}"
+    )
+endif()
