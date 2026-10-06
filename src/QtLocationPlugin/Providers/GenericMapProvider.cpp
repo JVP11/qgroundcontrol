@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "GenericMapProvider.h"
 #include "SettingsManager.h"
 #include "AppSettings.h"
@@ -23,7 +14,7 @@ QString CustomURLMapProvider::_getURL(int x, int y, int zoom) const
 
 QString CyberJapanMapProvider::_getURL(int x, int y, int zoom) const
 {
-    return _mapUrl.arg(_mapName).arg(zoom).arg(x).arg(y).arg(_imageFormat);
+    return _mapUrl.arg(_mapTypeId).arg(zoom).arg(x).arg(y).arg(_imageFormat);
 }
 
 QString LINZBasemapMapProvider::_getURL(int x, int y, int zoom) const
@@ -51,7 +42,7 @@ QString OpenStreetMapProvider::_getURL(int x, int y, int zoom) const
 
 QString StatkartMapProvider::_getURL(int x, int y, int zoom) const
 {
-    return _mapUrl.arg(zoom).arg(y).arg(x);
+    return _mapUrl.arg(_mapTypeId).arg(zoom).arg(y).arg(x);
 }
 
 QString EniroMapProvider::_getURL(int x, int y, int zoom) const
@@ -66,7 +57,7 @@ QString SvalbardMapProvider::_getURL(int x, int y, int zoom) const
 
 QString MapQuestMapProvider::_getURL(int x, int y, int zoom) const
 {
-    return _mapUrl.arg(_getServerNum(x, y, 4)).arg(_mapName).arg(zoom).arg(x).arg(y).arg(_imageFormat);
+    return _mapUrl.arg(_getServerNum(x, y, 4)).arg(_mapTypeId).arg(zoom).arg(x).arg(y).arg(_imageFormat);
 }
 
 QString VWorldMapProvider::_getURL(int x, int y, int zoom) const
@@ -90,5 +81,5 @@ QString VWorldMapProvider::_getURL(int x, int y, int zoom) const
     }
 
     const QString VWorldMapToken = SettingsManager::instance()->appSettings()->vworldToken()->rawValue().toString();
-    return _mapUrl.arg(VWorldMapToken, _mapName).arg(zoom).arg(y).arg(x).arg(_imageFormat);
+    return _mapUrl.arg(VWorldMapToken, _mapTypeId).arg(zoom).arg(y).arg(x).arg(_imageFormat);
 }

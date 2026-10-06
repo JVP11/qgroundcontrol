@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -17,6 +8,7 @@ import QGroundControl.Controls
 
 /// Dialog which shows up when a flight completes. Prompts the user for things like whether they should remove the plan from the vehicle.
 Item {
+    id:      missionCompleteDialogHelper
     visible: false
 
     property var missionController
@@ -39,7 +31,7 @@ Item {
             _vehicleWasInMissionFlightMode = _vehicleInMissionFlightMode
         } else {
             if (_showMissionCompleteDialog) {
-                missionCompleteDialogComponent.createObject(mainWindow).open()
+                missionCompleteDialogFactory.open()
             }
             _vehicleWasArmed = false
             _vehicleWasInMissionFlightMode = false
@@ -50,6 +42,12 @@ Item {
         if (_vehicleInMissionFlightMode && _vehicleArmed) {
             _vehicleWasInMissionFlightMode = true
         }
+    }
+
+    QGCPopupDialogFactory {
+        id: missionCompleteDialogFactory
+
+        dialogComponent: missionCompleteDialogComponent
     }
 
     Component {

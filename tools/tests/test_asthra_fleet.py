@@ -645,7 +645,7 @@ def main() -> int:
     expect("autoConnectUDP.value = true" not in qml, "must not force UDP vehicles into USB swarm", failures)
     expect("ttyACM0" not in qml or "usbSerialPorts" in qml, "fake ACM list should be gone", failures)
 
-    main_qml = Path(__file__).resolve().parents[2] / "src/UI/MainWindow.qml"
+    main_qml = Path(__file__).resolve().parents[2] / "src/MainWindow/MainWindow.qml"
     main_txt = main_qml.read_text(encoding="utf-8")
     expect("sideMode" in main_txt, "swarm drawer must leave the map visible", failures)
     expect('showTool(qsTr("Split land")' in main_txt and "true)" in main_txt, "SWARM must open as a side panel", failures)

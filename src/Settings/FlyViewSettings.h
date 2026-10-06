@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtQmlIntegration/QtQmlIntegration>
@@ -23,6 +14,8 @@ public:
 
     DEFINE_SETTING_NAME_GROUP()
 
+    DEFINE_SETTINGFACT(useGeoMapEngine)
+    DEFINE_SETTINGFACT(geoMapDebugUI)
     DEFINE_SETTINGFACT(guidedMinimumAltitude)
     DEFINE_SETTINGFACT(guidedMaximumAltitude)
     DEFINE_SETTINGFACT(showLogReplayStatusBar)
@@ -38,6 +31,6 @@ public:
     DEFINE_SETTINGFACT(instrumentQmlFile2)
     DEFINE_SETTINGFACT(requestControlAllowTakeover)
     DEFINE_SETTINGFACT(requestControlTimeout)
-    DEFINE_SETTINGFACT(showJoystickIndicatorInToolbar)
     DEFINE_SETTINGFACT(enableAutomaticMissionPopups)
+    DEFINE_SETTINGFACT(allowForceArm)
 };

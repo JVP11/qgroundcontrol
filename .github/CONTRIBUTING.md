@@ -1,6 +1,12 @@
 # Contributing to QGroundControl
 
-Thank you for considering contributing to QGroundControl! This guide will help you get started with contributing code, reporting issues, and improving documentation.
+Thank you for considering contributing to QGroundControl! This guide will help you get started with
+contributing code, reporting issues, and improving documentation.
+
+> **AI coding agents** (Claude Code, Codex, etc.): see [AGENTS.md](../AGENTS.md) for the canonical
+> agent-facing guide (golden rules, `just` build/test commands, definition of done, commit conventions).
+> This document remains the human-facing source of truth for the
+> [Architecture Patterns](#architecture-patterns) that AGENTS.md links back to.
 
 ## Table of Contents
 
@@ -10,6 +16,7 @@ Thank you for considering contributing to QGroundControl! This guide will help y
 4. [Testing Requirements](#testing-requirements)
 5. [Pull Request Process](#pull-request-process)
 6. [License Requirements](#license-requirements)
+7. [Additional Resources](#additional-resources)
 
 ---
 
@@ -25,10 +32,13 @@ Before you begin, please:
 
 ### Development Environment
 
-- **Language**: C++20 with Qt 6.10+ framework
-- **Build System**: CMake 3.25+
+- **Language**: C++20 with the Qt version defined in [`build-config.json`](build-config.json)
+- **Build System**: CMake (minimum version defined in [`build-config.json`](build-config.json)); see
+  the [CMake development guide](../cmake/README.md) for modules, presets, and focused tests
 - **Platforms**: Windows, macOS, Linux, Android, iOS
 - **IDE**: Qt Creator (recommended), VS Code, or your preferred IDE
+- **Build/test/lint commands**: see [tools/README.md](../tools/README.md) for the `just configure` /
+  `build` / `test` / `lint` / `check` workflow
 
 ---
 
@@ -61,7 +71,8 @@ Feature requests are welcome! Please:
 
 ### Contributing Translations
 
-QGroundControl uses [Crowdin](https://crowdin.com/project/qgroundcontrol) for community translations. See [tools/translations/README.md](../tools/translations/README.md) for details on how translations are managed.
+QGroundControl uses [Crowdin](https://crowdin.com/project/qgroundcontrol) for community translations. See
+[tools/translations/README.md](../tools/translations/README.md) for details on how translations are managed.
 
 ### Contributing Code
 
@@ -81,15 +92,15 @@ QGroundControl uses [Crowdin](https://crowdin.com/project/qgroundcontrol) for co
 3. **Make your changes** following our [coding standards](#coding-standards)
 
 4. **Test your changes thoroughly**
-   - Run unit tests: `./qgroundcontrol --unittest`
+   - Run `just test` (or `ctest --output-on-failure -L Unit` for the unit-test label only)
    - Test on all relevant platforms when possible
    - Test with both PX4 and ArduPilot if applicable
 
-5. **Commit your changes**
+5. **Commit your changes** using [Conventional Commits](../AGENTS.md#commit--review-conventions)
 
    ```bash
    git add .
-   git commit -m "Add feature: brief description"
+   git commit -m "feat: brief description"
    ```
 
 6. **Push to your fork**
@@ -104,168 +115,37 @@ QGroundControl uses [Crowdin](https://crowdin.com/project/qgroundcontrol) for co
 
 ## Coding Standards
 
-For the complete coding style guide with examples, see [CODING_STYLE.md](../CODING_STYLE.md).
-
-### C++ Guidelines
-
-- **Standard**: C++20
-- **Framework**: Qt 6 guidelines
-- **Naming Conventions**:
-  - Classes: `PascalCase`
-  - Methods/functions: `camelCase`
-  - Private members: `_leadingUnderscore`
-  - Constants: `ALL_CAPS` or `kPascalCase`
-
-- **Always use braces** for if/else/for/while statements
-
-  ```cpp
-  // Good
-  if (condition) {
-      doSomething();
-  }
-
-  // Bad
-  if (condition) doSomething();
-  ```
-
-- **Defensive coding**:
-  - Always null-check pointers before use
-  - Validate all inputs
-  - Use Q_ASSERT for debug-build development checks only (compiled out in release builds)
-  - Always use defensive error handling in production code paths (never rely on Q_ASSERT)
-  - Handle errors gracefully in production code
-
-- **Code formatting**:
-  - Run `clang-format` before committing
-  - Follow `.clang-format`, `.clang-tidy`, `.editorconfig` in repo root
-  - See `CodingStyle.h`, `CodingStyle.cc`, `CodingStyle.qml` for examples
-  - 4 spaces for indentation (no tabs)
-
-### QML Guidelines
-
-- Follow Qt QML coding conventions
-- Use type annotations
-- Prefer declarative over imperative code
-- See `src/QmlControls/QGCButton.qml` for examples
-
-### Logging
-
-Use Qt logging categories:
-
-```cpp
-Q_DECLARE_LOGGING_CATEGORY(MyComponentLog)
-QGC_LOGGING_CATEGORY(MyComponentLog, "qgc.component.name")
-
-qCDebug(MyComponentLog) << "Debug message:" << value;
-qCWarning(MyComponentLog) << "Warning message";
-qCCritical(MyComponentLog) << "Critical error";
-```
+Follow [CODING_STYLE.md](../CODING_STYLE.md) for naming, formatting, C++20 features, QML style, and logging
+conventions. Run `just lint` (or `pre-commit run --all-files`) before committing.
 
 ### Architecture Patterns
 
-#### Fact System (Most Important!)
+QGroundControl has several core architecture patterns you must follow. See [CODING_STYLE.md](../CODING_STYLE.md)
+for full details with code examples:
 
-The Fact System handles ALL vehicle parameters. Never create custom parameter storage.
-
-```cpp
-// Access parameters (always null-check!)
-Fact* param = vehicle->parameterManager()->getParameter(-1, "PARAM_NAME");
-if (param && param->validate(newValue, false).isEmpty()) {
-    param->setCookedValue(newValue);  // Use cookedValue for UI (with units)
-    // param->rawValue() for MAVLink/storage
-}
-```
-
-**Key classes:**
-
-- `Fact` - Single parameter with validation, units, metadata
-- `FactGroup` - Hierarchical container (handles MAVLink via `handleMessage()`)
-- `FactMetaData` - JSON-based metadata (min/max, enums, descriptions)
-
-**Rules:**
-
-- Wait for `parametersReady` signal before accessing
-- Use `cookedValue` (display) vs `rawValue` (storage)
-- Metadata in `*.FactMetaData.json` files
-
-#### Multi-Vehicle Support
-
-Always null-check the active vehicle:
-
-```cpp
-Vehicle* vehicle = MultiVehicleManager::instance()->activeVehicle();
-if (!vehicle) return;
-
-// Other managers
-SettingsManager::instance()->appSettings()->...
-LinkManager::instance()->...
-```
-
-#### Firmware Plugin System
-
-Use FirmwarePlugin for firmware-specific behavior:
-
-```cpp
-// FirmwarePlugin - Firmware behavior (flight modes, capabilities)
-vehicle->firmwarePlugin()->flightModes();
-vehicle->firmwarePlugin()->isCapable(capability);
-
-// AutoPilotPlugin - Vehicle setup UI
-// VehicleComponent - Individual setup items (Radio, Sensors, Safety)
-```
-
-#### QML/C++ Integration
-
-```cpp
-Q_OBJECT
-QML_ELEMENT           // Creatable in QML
-QML_SINGLETON         // Singleton
-QML_UNCREATABLE("")   // C++-only
-
-Q_PROPERTY(Type name READ getter WRITE setter NOTIFY signal)
-Q_INVOKABLE void method();
-Q_ENUM(EnumType)
-```
+- **Fact System**: ALL vehicle parameters use Facts — never create custom parameter storage
+- **Multi-Vehicle**: ALWAYS null-check `activeVehicle()` before use
+- **Firmware Plugin**: Use `vehicle->firmwarePlugin()` for firmware-specific behavior
+- **QML Integration**: Use `QML_ELEMENT`/`QML_SINGLETON`/`QML_UNCREATABLE` macros, `Q_PROPERTY` for bindings
 
 ---
 
 ## Testing Requirements
 
-### Unit Tests
+See [test/README.md](../test/README.md) for the complete testing guide, including base classes, CTest labels,
+`MultiSignalSpy`, and coverage.
 
-- Add unit tests for new functionality
-- Place tests in `test/` directory mirroring `src/` structure
-- Use Qt Test framework with `UnitTest` base class
-- Run tests before submitting:
+**Key points:**
 
-  ```bash
-  ./qgroundcontrol --unittest
-  ```
-
-### Manual Testing
-
-Test your changes on:
-
-- Multiple platforms (Windows, macOS, Linux if possible)
-- Both PX4 and ArduPilot firmware (if applicable)
-- Different vehicle types (multirotor, fixed-wing, VTOL, rover)
+- Add unit tests for new functionality in `test/` mirroring `src/` structure
+- Use the `UnitTest` base class (or `VehicleTest`, `MissionTest`, etc.)
+- Run `ctest --output-on-failure -L Unit` before submitting
+- Test on multiple platforms and both PX4/ArduPilot when applicable
 
 ### Pre-commit Checks
 
-Run before committing:
-
-```bash
-# Using Makefile or justfile (recommended)
-make lint        # or: just lint
-
-# Format code
-clang-format -i path/to/changed/files.cc
-
-# Run pre-commit hooks (optional)
-pre-commit run --all-files
-```
-
-See [tools/README.md](../tools/README.md) for all available development commands.
+Run the lint gate before committing (`just lint`, or `pre-commit run --all-files` for the full sweep) —
+see [tools/README.md](../tools/README.md) for all available development commands.
 
 ---
 
@@ -280,7 +160,7 @@ See [tools/README.md](../tools/README.md) for all available development commands
    git rebase upstream/master
    ```
 
-2. **Ensure all tests pass**
+2. **Ensure all tests pass** (`just check`)
 3. **Update documentation** if needed
 4. **Write a clear PR description**:
    - What problem does it solve?
@@ -290,11 +170,12 @@ See [tools/README.md](../tools/README.md) for all available development commands
 
 ### PR Requirements
 
-- ✅ All CI checks must pass
-- ✅ Code follows style guidelines
-- ✅ Tests added for new features
-- ✅ No unrelated changes
-- ✅ Commit messages are clear and descriptive
+- All CI checks must pass
+- Code follows style guidelines
+- Tests added for new features
+- No unrelated changes
+- Commit messages are clear and descriptive (Conventional Commits, see
+  [AGENTS.md](../AGENTS.md#commit--review-conventions))
 
 ### Review Process
 
@@ -306,57 +187,16 @@ See [tools/README.md](../tools/README.md) for all available development commands
 
 - Delete your feature branch
 - Your contribution will appear in the next release
-- Thank you for contributing! 🎉
+- Thank you for contributing!
 
 ---
 
 ## License Requirements
 
-### Dual-License Requirement
+All contributions must be compatible with QGroundControl's **dual-license system** (Apache 2.0 AND GPL v3).
+Your code must be original or from a compatible license (BSD, MIT, Apache 2.0).
 
-**Important**: All contributions to QGroundControl must be compatible with our **dual-license system** (Apache 2.0 AND GPL v3).
-
-### What This Means
-
-- **Your code must be original** or from a compatible license
-- **Compatible licenses**: BSD 2-clause, BSD 3-clause, MIT, Apache 2.0
-- **Incompatible licenses**: GPL-only, proprietary, copyleft-only licenses
-
-By contributing, you agree that:
-
-1. Your contributions are your original work or properly licensed
-2. You grant QGroundControl rights under **both** Apache 2.0 and GPL v3 licenses
-3. You have the right to submit the contribution
-
-### License Background
-
-QGroundControl uses a dual-license system:
-
-#### Apache License 2.0
-
-- Permissive license
-- Allows use in proprietary applications
-- Allows distribution via app stores
-- **Requires commercial Qt license**
-
-Full text: [LICENSE-APACHE](../LICENSE-APACHE)
-
-#### GNU General Public License v3 (GPL v3)
-
-- Copyleft license
-- Ensures software remains open source
-- **Can use open-source Qt**
-- Users can use later GPL versions (v3 is minimum for contributions)
-
-Full text: [LICENSE-GPL](../LICENSE-GPL)
-
-### Questions About Licensing
-
-If you have questions about licensing, please contact:
-
-- Lorenz Meier: <lm@qgroundcontrol.org>
-
-For more details, see [COPYING.md](COPYING.md).
+See [COPYING.md](COPYING.md) for full license details, compatible licenses, and contact information.
 
 ---
 
@@ -367,12 +207,8 @@ For more details, see [COPYING.md](COPYING.md).
 - **Support Guide**: For help and community resources, see [SUPPORT.md](SUPPORT.md)
 - **Discussion Forum**: <https://discuss.px4.io/c/qgroundcontrol>
 - **Discord**: <https://discord.gg/dronecode>
-
----
-
-## Code of Conduct
-
-QGroundControl is part of the Dronecode Foundation. Please follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+- **Code of Conduct**: QGroundControl is part of the Dronecode Foundation — see our
+  [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ---
 

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -24,7 +15,6 @@ ValueSlider {
 
     required property Fact fact
 
-    property real _minMaxVisibilityPadding: ScreenTools.defaultFontPixelWidth
     property Fact _nullFact:                Fact { }
     property Fact _fact:                    fact ? fact : _nullFact
 
@@ -59,8 +49,19 @@ ValueSlider {
         // We don't want to spam the vehicle with parameter updates so we coalesce multiple updated with a timer
         // We also don't want to update the fact value until we know the control has finished initialization. During
         // initialization the fact value can go through slight changes due to cooked value floating point inprecision.
-        if (_loadComplete) {
+        // Changes coming from the fact itself must not be echoed back.
+        if (_loadComplete && control.value !== _fact.value) {
             updateTimer.start()
+        }
+    }
+
+    Connections {
+        target: control._fact
+
+        // A user drag replaces the value binding, so restore it when units change
+        function onCookedValuesChanged() {
+            control.value = Qt.binding(function() { return control._fact.value })
+            Qt.callLater(function() { control._recalcSliderPos(false) })
         }
     }
 }

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2025 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 // This is an example class header file which is used to describe the QGroundControl
 // coding style. In general almost everything in here has some coding style meaning.
 // Not all style choices are explained.
@@ -38,13 +29,22 @@ class Vehicle;
 // with a suffix of Log.
 Q_DECLARE_LOGGING_CATEGORY(CodingStyleLog)
 
-/// Here is the class documentation. Class names are PascalCase. If you override any of the Qt base classes to provide
-/// generic base implementations for widespread use prefix the class name with QGC. For example:
-/// For normal single use classes do not prefix the name with QGC.
+/// \brief One-line summary of the class (the Doxygen "brief" description).
+///
+/// The first line must begin with \brief followed by a blank /// line.
+/// It becomes the brief description shown in the
+/// annotated class list and at the top of the class page in the generated docs.
+///
+/// Everything after the blank /// line is the detailed description. Explain the purpose,
+/// ownership model, thread safety, and any important usage notes here.
+///
+/// Class names are PascalCase. If you override any Qt base class to provide a generic
+/// base implementation for widespread use, prefix the name with QGC (e.g. QGCMapPolygon).
+/// For normal single-use classes do not prefix the name with QGC.
 ///
 /// Qt6 QML Integration: Use QML_ELEMENT for QML-creatable types, QML_SINGLETON for singletons,
 /// and QML_UNCREATABLE("reason") for C++-only instantiation.
-
+///
 class CodingStyle : public QObject
 {
     Q_OBJECT

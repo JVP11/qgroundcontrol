@@ -5,6 +5,10 @@ inputs:
   build-dir:
     description: Path to CMake build directory
     required: true
+  mode:
+    description: 'Coverage generation mode (full: run tests + report, report-only: report from existing coverage data)'
+    required: false
+    default: full
   codecov-token:
     description: Codecov upload token (optional for public repos)
     required: false
@@ -21,36 +25,36 @@ inputs:
     description: Codecov flags (comma-separated)
     required: false
     default: unittests
+  pr-number:
+    description: Pull request number to post comment (optional)
+    required: false
+    default: ''
+  baseline-xml:
+    description: Path to baseline coverage XML for comparison (optional)
+    required: false
+    default: ''
+  comment-tag:
+    description: Tag for updating existing PR comment
+    required: false
+    default: coverage-report
 
 runs:
   using: composite
   steps:
     - name: Generate Coverage Report
-      working-directory: ${{ inputs.build-dir }}
       shell: bash
       run: |
-        cmake --build . --target coverage-report 2>&1 | tee coverage-output.txt
-
-        # Extract coverage summary for GitHub Step Summary
-        {
-          echo "## 📊 Code Coverage"
-          echo ""
-          if grep -q "lines:" coverage-output.txt; then
-            LINE_COV=$(grep "lines:" coverage-output.txt | tail -1)
-            BRANCH_COV=$(grep "branches:" coverage-output.txt | tail -1 || echo "branches: N/A")
-            echo "| Metric | Coverage |"
-            echo "|--------|----------|"
-            echo "| Lines | ${LINE_COV#*: } |"
-            echo "| Branches | ${BRANCH_COV#*: } |"
-          else
-            echo "Coverage data not available"
-          fi
-          echo ""
-          echo "[View detailed report](coverage.html)"
-        } >> "$GITHUB_STEP_SUMMARY"
+        python3 "${GITHUB_WORKSPACE}/tools/coverage.py" \
+          --mode "${INPUTS_MODE}" \
+          --build-dir "${INPUTS_BUILD_DIR}" \
+          --log-file "${INPUTS_BUILD_DIR}/coverage-output.txt" \
+          --step-summary
+      env:
+        INPUTS_MODE: ${{ inputs.mode }}
+        INPUTS_BUILD_DIR: ${{ inputs.build-dir }}
 
     - name: Upload to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
       with:
         files: ${{ inputs.build-dir }}/coverage.xml
         flags: ${{ inputs.flags }}
@@ -60,11 +64,32 @@ runs:
         verbose: true
 
     - name: Upload Coverage Artifact
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
         path: |
+          ${{ inputs.build-dir }}/coverage-output.txt
           ${{ inputs.build-dir }}/coverage.xml
           ${{ inputs.build-dir }}/coverage.html
           ${{ inputs.build-dir }}/coverage.*.html
         retention-days: ${{ inputs.retention-days }}
+
+    - name: Generate PR comment
+      if: inputs.pr-number != ''
+      shell: bash
+      run: |
+        python3 "${GITHUB_WORKSPACE}/.github/scripts/coverage_comment.py" \
+          --coverage-xml "${INPUTS_BUILD_DIR}/coverage.xml" \
+          --baseline-xml "${INPUTS_BASELINE_XML}" \
+          --output coverage-comment.md
+      env:
+        INPUTS_BUILD_DIR: ${{ inputs.build-dir }}
+        INPUTS_BASELINE_XML: ${{ inputs.baseline-xml }}
+
+    - name: Post PR comment
+      if: inputs.pr-number != ''
+      uses: thollander/actions-comment-pull-request@v3
+      with:
+        pr-number: ${{ inputs.pr-number }}
+        comment-tag: ${{ inputs.comment-tag }}
+        file-path: coverage-comment.md

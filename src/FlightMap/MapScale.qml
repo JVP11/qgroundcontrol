@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
@@ -24,7 +15,7 @@ Item {
 
     property var    _scaleLengthsMeters:    [5, 10, 25, 50, 100, 150, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000]
     property var    _scaleLengthsFeet:      [10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 4000, 5280, 5280*2, 5280*5, 5280*10, 5280*25, 5280*50, 5280*100, 5280*250, 5280*500, 5280*1000]
-    property var    _color:                 mapControl.isSatelliteMap ? "white" : "black"
+    property var    _color:                 mapControl && mapControl.isSatelliteMap ? "white" : "black"
 
     function formatDistanceMeters(meters) {
         var dist = Math.round(meters)
@@ -139,6 +130,11 @@ Item {
         function onZoomLevelChanged() { triggerRecalc() }
     }
 
+    Connections {
+        target: QGroundControl.unitsConversion
+        function onUnitsChanged() { triggerRecalc() }
+    }
+
     PropertyAnimation {
         id:         autoHideAnimation
         target:     control
@@ -156,6 +152,7 @@ Item {
 
     QGCMapLabel {
         id:                 scaleText
+        objectName:         "scaleText"
         map:                mapControl
         font.bold:          true
         anchors.left:       parent.left

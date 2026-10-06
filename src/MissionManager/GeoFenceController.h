@@ -1,23 +1,11 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "PlanElementController.h"
 #include "QmlObjectListModel.h"
 #include "Fact.h"
-
-Q_DECLARE_LOGGING_CATEGORY(GeoFenceControllerLog)
 
 class GeoFenceManager;
 class QGCFenceCircle;
@@ -65,10 +53,6 @@ public:
     /// Clears the interactive bit from all fence items
     Q_INVOKABLE void clearAllInteractive(void);
 
-#ifdef QGC_UTM_ADAPTER
-    Q_INVOKABLE void loadFlightPlanData(void);
-#endif
-
     double  paramCircularFence  (void);
     Fact*   breachReturnAltitude(void) { return &_breachReturnAltitudeFact; }
 
@@ -100,13 +84,8 @@ signals:
     void loadComplete                   (void);
     void paramCircularFenceChanged      (void);
 
-#ifdef QGC_UTM_ADAPTER
-    void uploadFlagSent         (bool flag);
-    void polygonBoundarySent    (QList<QGeoCoordinate> coords);
-#endif
-
 private slots:
-    void _polygonDirtyChanged       (bool dirty);
+    void _fenceListDirtyChanged     (bool dirty);
     void _setDirty                  (void);
     void _setFenceFromManager       (const QList<QGCFencePolygon>& polygons, const QList<QGCFenceCircle>&  circles);
     void _setReturnPointFromManager (QGeoCoordinate breachReturnPoint);

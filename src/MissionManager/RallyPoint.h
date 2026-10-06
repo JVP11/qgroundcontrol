@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
@@ -14,8 +5,9 @@
 
 #include "Fact.h"
 
-/// This class is used to encapsulate the QGeoCoordinate associated with a Rally Point into a QObject such
+/// \brief This class is used to encapsulate the QGeoCoordinate associated with a Rally Point into a QObject such
 /// that it can be used in a QmlObjectListMode for Qml.
+
 class RallyPoint : public QObject
 {
     Q_OBJECT

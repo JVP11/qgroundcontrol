@@ -1,16 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
 #pragma once
 
 #include <QtCore/QObject>
@@ -19,7 +6,8 @@
 #include <QtCore/QList>
 #include <QtCore/QTextStream>
 
-/// Support for Intel Hex firmware file
+/// \brief Support for Intel Hex firmware file
+///
 class FirmwareImage : public QObject
 {
     Q_OBJECT

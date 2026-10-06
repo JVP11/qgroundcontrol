@@ -1,22 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "PlanElementController.h"
 #include "QmlObjectListModel.h"
-
-Q_DECLARE_LOGGING_CATEGORY(RallyPointControllerLog)
 
 class GeoFenceManager;
 class RallyPointManager;
@@ -69,6 +57,7 @@ private slots:
     void _managerRemoveAllComplete  (bool error);
     void _setFirstPointCurrent      (void);
     void _managerVehicleChanged     (Vehicle* managerVehicle);
+    void _pointsDirtyChanged        (bool dirty);
 
 private:
     Vehicle*            _managerVehicle =       nullptr;

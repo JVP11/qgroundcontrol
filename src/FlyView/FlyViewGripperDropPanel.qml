@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Layouts
 
@@ -17,8 +8,8 @@ ColumnLayout {
     spacing: ScreenTools.defaultFontHeight / 2
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    property var _buttonTitles: [qsTr("Open"), qsTr("Close"), qsTr("Stop")]
-    property var _buttonActions: [QGCMAVLink.GripperActionOpen, QGCMAVLink.GripperActionClose, QGCMAVLink.GripperActionStop]
+    property var _buttonTitles: [qsTr("Release"), qsTr("Grab"), qsTr("Hold")]
+    property var _buttonActions: [MAVLinkEnums.GRIPPER_ACTION_RELEASE, MAVLinkEnums.GRIPPER_ACTION_GRAB, MAVLinkEnums.GRIPPER_ACTION_HOLD]
 
     Repeater {
         model: _buttonTitles

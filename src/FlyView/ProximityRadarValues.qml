@@ -1,19 +1,10 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 /// Object which exposes vehicle distanceSensors FactGroup information for use in UI
 QtObject {
     property var    vehicle
 
-    property bool   telemetryAvailable: vehicle && vehicle.distanceSensors.telemetryAvailable
+    property bool   telemetryAvailable: vehicle ? vehicle.distanceSensors.telemetryAvailable : false
 
     signal rotationValueChanged ///< Signalled when any available rotation value changes
 

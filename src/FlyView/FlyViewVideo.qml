@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
@@ -17,9 +8,6 @@ Item {
 
     property Item pipView
     property Item pipState: videoPipState
-
-    property int    _track_rec_x:       0
-    property int    _track_rec_y:       0
 
     PipState {
         id:         videoPipState
@@ -56,20 +44,13 @@ Item {
         id:             videoStreaming
         anchors.fill:   parent
         useSmallFont:   _root.pipState.state !== _root.pipState.fullState
-        visible:        QGroundControl.videoManager.isStreamSource
-    }
-    //-- UVC Video (USB Camera or Video Device)
-    Loader {
-        id:             cameraLoader
-        anchors.fill:   parent
-        visible:        QGroundControl.videoManager.isUvc
-        source:         QGroundControl.videoManager.uvcEnabled ? "qrc:/qml/QGroundControl/FlyView/FlightDisplayViewUVC.qml" : "qrc:/qml/QGroundControl/FlyView//FlightDisplayViewDummy.qml"
+        visible:        QGroundControl.videoManager.isStreamSource || QGroundControl.videoManager.isUvc
     }
 
     QGCLabel {
         text: qsTr("Double-click to exit full screen")
         font.pointSize: ScreenTools.largeFontPointSize
-        visible: QGroundControl.videoManager.fullScreen && flyViewVideoMouseArea.containsMouse
+        visible: QGroundControl.videoManager.fullScreen
         anchors.centerIn: parent
 
         onVisibleChanged: {
@@ -90,159 +71,86 @@ Item {
     OnScreenGimbalController {
         id:                      onScreenGimbalController
         anchors.fill:            parent
-        screenX:                 flyViewVideoMouseArea.mouseX
-        screenY:                 flyViewVideoMouseArea.mouseY
-        cameraTrackingEnabled:   videoStreaming._camera && videoStreaming._camera.trackingEnabled
+        cameraTrackingEnabled:   !!(videoStreaming._camera && videoStreaming._camera.trackingEnabled)
+    }
+
+    OnScreenCameraTrackingController {
+        id:                      cameraTrackingController
+        anchors.fill:            parent
+        camera:                  videoStreaming._camera
+        videoWidth:              videoStreaming.getWidth()
+        videoHeight:             videoStreaming.getHeight()
     }
 
     MouseArea {
         id:                         flyViewVideoMouseArea
         anchors.fill:               parent
         enabled:                    pipState.state === pipState.fullState
-        hoverEnabled:               true
 
-        property double x0:         0
-        property double x1:         0
-        property double y0:         0
-        property double y1:         0
-        property double offset_x:   0
-        property double offset_y:   0
-        property double radius:     20
-        property var trackingROI:   null
-        property var trackingStatus: trackingStatusComponent.createObject(flyViewVideoMouseArea, {})
+        property real _pressX:      0
+        property real _pressY:      0
+        property bool _dragging:    false
+        property bool _doubleClicked: false
+        readonly property real _dragThreshold: 10
 
-        onClicked:       onScreenGimbalController.clickControl()
-        onDoubleClicked: QGroundControl.videoManager.fullScreen = !QGroundControl.videoManager.fullScreen
-
-        onPressed:(mouse) => {
-            onScreenGimbalController.pressControl()
-
-            _track_rec_x = mouse.x
-            _track_rec_y = mouse.y
-
-            //create a new rectangle at the wanted position
-            if(videoStreaming._camera) {
-                if (videoStreaming._camera.trackingEnabled) {
-                    trackingROI = trackingROIComponent.createObject(flyViewVideoMouseArea, {
-                        "x": mouse.x,
-                        "y": mouse.y
-                    });
-                }
-            }
-        }
-        onPositionChanged: (mouse) => {
-            //on move, update the width of rectangle
-            if (trackingROI !== null) {
-                if (mouse.x < trackingROI.x) {
-                    trackingROI.x = mouse.x
-                    trackingROI.width = Math.abs(mouse.x - _track_rec_x)
-                } else {
-                    trackingROI.width = Math.abs(mouse.x - trackingROI.x)
-                }
-                if (mouse.y < trackingROI.y) {
-                    trackingROI.y = mouse.y
-                    trackingROI.height = Math.abs(mouse.y - _track_rec_y)
-                } else {
-                    trackingROI.height = Math.abs(mouse.y - trackingROI.y)
-                }
-            }
-        }
-        onReleased: (mouse) => {
-            onScreenGimbalController.releaseControl()
-
-            //if there is already a selection, delete it
-            if (trackingROI !== null) {
-                trackingROI.destroy();
-            }
-
-            if(videoStreaming._camera) {
-                if (videoStreaming._camera.trackingEnabled) {
-                    // order coordinates --> top/left and bottom/right
-                    x0 = Math.min(_track_rec_x, mouse.x)
-                    x1 = Math.max(_track_rec_x, mouse.x)
-                    y0 = Math.min(_track_rec_y, mouse.y)
-                    y1 = Math.max(_track_rec_y, mouse.y)
-
-                    //calculate offset between video stream rect and background (black stripes)
-                    offset_x = (parent.width - videoStreaming.getWidth()) / 2
-                    offset_y = (parent.height - videoStreaming.getHeight()) / 2
-
-                    //convert absolute coords in background to absolute video stream coords
-                    x0 = x0 - offset_x
-                    x1 = x1 - offset_x
-                    y0 = y0 - offset_y
-                    y1 = y1 - offset_y
-
-                    //convert absolute to relative coordinates and limit range to 0...1
-                    x0 = Math.max(Math.min(x0 / videoStreaming.getWidth(), 1.0), 0.0)
-                    x1 = Math.max(Math.min(x1 / videoStreaming.getWidth(), 1.0), 0.0)
-                    y0 = Math.max(Math.min(y0 / videoStreaming.getHeight(), 1.0), 0.0)
-                    y1 = Math.max(Math.min(y1 / videoStreaming.getHeight(), 1.0), 0.0)
-
-                    //use point message if rectangle is very small
-                    if (Math.abs(_track_rec_x - mouse.x) < 10 && Math.abs(_track_rec_y - mouse.y) < 10) {
-                        var pt  = Qt.point(x0, y0)
-                        videoStreaming._camera.startTracking(pt, radius / videoStreaming.getWidth())
-                    } else {
-                        var rec = Qt.rect(x0, y0, x1 - x0, y1 - y0)
-                        videoStreaming._camera.startTracking(rec)
-                    }
-                    _track_rec_x = 0
-                    _track_rec_y = 0
-                }
-            }
-        }
-
-        Component {
-            id: trackingROIComponent
-
-            Rectangle {
-                color:              Qt.rgba(0.1,0.85,0.1,0.25)
-                border.color:       "green"
-                border.width:       1
-            }
-        }
-
-        Component {
-            id: trackingStatusComponent
-
-            Rectangle {
-                color:              "transparent"
-                border.color:       "red"
-                border.width:       5
-                radius:             5
-            }
-        }
-
+        // Defer single-click handling so a double-click (fullscreen toggle) doesn't also
+        // fire an unintended gimbal click-to-point/tracking command on its first click.
         Timer {
-            id: trackingStatusTimer
-            interval:               50
-            repeat:                 true
-            running:                true
-            onTriggered: {
-                if (videoStreaming._camera) {
-                    if (videoStreaming._camera.trackingEnabled && videoStreaming._camera.trackingImageStatus) {
-                        var margin_hor = (parent.parent.width - videoStreaming.getWidth()) / 2
-                        var margin_ver = (parent.parent.height - videoStreaming.getHeight()) / 2
-                        var left = margin_hor + videoStreaming.getWidth() * videoStreaming._camera.trackingImageRect.left
-                        var top = margin_ver + videoStreaming.getHeight() * videoStreaming._camera.trackingImageRect.top
-                        var right = margin_hor + videoStreaming.getWidth() * videoStreaming._camera.trackingImageRect.right
-                        var bottom = margin_ver + !isNaN(videoStreaming._camera.trackingImageRect.bottom) ? videoStreaming.getHeight() * videoStreaming._camera.trackingImageRect.bottom : top + (right - left)
-                        var width = right - left
-                        var height = bottom - top
+            id:         singleClickTimer
+            interval:   Qt.styleHints.mouseDoubleClickInterval
+            repeat:     false
 
-                        flyViewVideoMouseArea.trackingStatus.x = left
-                        flyViewVideoMouseArea.trackingStatus.y = top
-                        flyViewVideoMouseArea.trackingStatus.width = width
-                        flyViewVideoMouseArea.trackingStatus.height = height
-                    } else {
-                        flyViewVideoMouseArea.trackingStatus.x = 0
-                        flyViewVideoMouseArea.trackingStatus.y = 0
-                        flyViewVideoMouseArea.trackingStatus.width = 0
-                        flyViewVideoMouseArea.trackingStatus.height = 0
-                    }
-                }
+            property real clickX: 0
+            property real clickY: 0
+
+            onTriggered: {
+                onScreenGimbalController.mouseClicked(clickX, clickY)
+                cameraTrackingController.mouseClicked(clickX, clickY)
             }
+        }
+
+        onDoubleClicked: {
+            // Fires on the second press of a double-click. The second release still emits
+            // onReleased, so flag it to prevent re-arming the single-click timer.
+            _doubleClicked = true
+            singleClickTimer.stop()
+            QGroundControl.videoManager.fullScreen = !QGroundControl.videoManager.fullScreen
+        }
+
+        onPressed: (mouse) => {
+            _pressX = mouse.x
+            _pressY = mouse.y
+            _dragging = false
+            // Clear any stale flag (e.g. double-click followed by drag releases through the
+            // drag branch without consuming it). Safe: pressed is emitted before doubleClicked.
+            _doubleClicked = false
+        }
+
+        onPositionChanged: (mouse) => {
+            if (!_dragging && (Math.abs(mouse.x - _pressX) >= _dragThreshold || Math.abs(mouse.y - _pressY) >= _dragThreshold)) {
+                _dragging = true
+                onScreenGimbalController.mouseDragStart(_pressX, _pressY)
+                cameraTrackingController.mouseDragStart(_pressX, _pressY)
+            }
+            if (_dragging) {
+                onScreenGimbalController.mouseDragPositionChanged(mouse.x, mouse.y)
+                cameraTrackingController.mouseDragPositionChanged(mouse.x, mouse.y)
+            }
+        }
+
+        onReleased: (mouse) => {
+            if (_dragging) {
+                onScreenGimbalController.mouseDragEnd()
+                cameraTrackingController.mouseDragEnd(mouse.x, mouse.y)
+            } else if (_doubleClicked) {
+                // Second release of a double-click - fullscreen toggle already handled
+                _doubleClicked = false
+            } else {
+                singleClickTimer.clickX = mouse.x
+                singleClickTimer.clickY = mouse.y
+                singleClickTimer.restart()
+            }
+            _dragging = false
         }
     }
 

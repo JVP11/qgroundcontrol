@@ -1,22 +1,16 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "VehicleLinkManager.h"
+#include "MAVLinkLib.h"
 #include "Vehicle.h"
 #include "LinkManager.h"
-#include "QGCApplication.h"
+#include "AppMessages.h"
 #include "AudioOutput.h"
 #include "MultiVehicleManager.h"
 #ifndef QGC_NO_SERIAL_LINK
     #include "SerialLink.h"
 #endif
 #include "QGCLoggingCategory.h"
+
+#include <algorithm>
 
 QGC_LOGGING_CATEGORY(VehicleLinkManagerLog, "Vehicle.VehicleLinkManager")
 
@@ -31,7 +25,7 @@ VehicleLinkManager::VehicleLinkManager(Vehicle *vehicle)
     (void) connect(_commLostCheckTimer, &QTimer::timeout, this, &VehicleLinkManager::_commLostCheck);
 
     _commLostCheckTimer->setSingleShot(false);
-    _commLostCheckTimer->setInterval(_commLostCheckTimeoutMSecs);
+    _commLostCheckTimer->setInterval(QGC::runningUnitTests() ? kTestCommLostCheckTimeoutMs : _commLostCheckTimeoutMSecs);
 }
 
 VehicleLinkManager::~VehicleLinkManager()
@@ -94,25 +88,15 @@ void VehicleLinkManager::_commRegainedOnLink(LinkInterface *link)
 
     if (!primarySwitchMessage.isEmpty()) {
         AudioOutput::instance()->say(primarySwitchMessage.toLower());
-        qgcApp()->showAppMessage(primarySwitchMessage);
+        QGC::showAppMessage(primarySwitchMessage);
     }
 
     emit linkStatusesChanged();
 
-    // Check recovery from total communication loss
-    if (!_communicationLost) {
-        return;
-    }
-
-    bool noCommunicationLoss = true;
-    for (const LinkInfo_t &linkInfo: _rgLinkInfo) {
-        if (linkInfo.commLost) {
-            noCommunicationLoss = false;
-            break;
-        }
-    }
-
-    if (noCommunicationLoss) {
+    // Any single regained link ends total communication loss
+    if (_communicationLost &&
+        std::any_of(_rgLinkInfo.cbegin(), _rgLinkInfo.cend(),
+                    [](const LinkInfo_t &info) { return !info.commLost; })) {
         _communicationLost = false;
         emit communicationLostChanged(_communicationLost);
     }
@@ -124,9 +108,12 @@ void VehicleLinkManager::_commLostCheck()
         return;
     }
 
+    // Use much shorter heartbeat timeout in unit tests since MockLink sends heartbeats instantly
+    const int heartbeatTimeout = QGC::runningUnitTests() ? kTestHeartbeatTimeoutMs : _heartbeatMaxElpasedMSecs;
+
     bool linkStatusChange = false;
     for (LinkInfo_t &linkInfo: _rgLinkInfo) {
-        if (!linkInfo.commLost && !linkInfo.link->linkConfiguration()->isHighLatency() && (linkInfo.heartbeatElapsedTimer.elapsed() > _heartbeatMaxElpasedMSecs)) {
+        if (!linkInfo.commLost && !linkInfo.link->linkConfiguration()->isHighLatency() && (linkInfo.heartbeatElapsedTimer.elapsed() > heartbeatTimeout)) {
             linkInfo.commLost = true;
             linkStatusChange = true;
 
@@ -146,7 +133,7 @@ void VehicleLinkManager::_commLostCheck()
     if (_updatePrimaryLink()) {
         QString msg = tr("%1Switching communication to secondary link.").arg(_vehicle->_vehicleIdSpeech());
         AudioOutput::instance()->say(msg.toLower());
-        qgcApp()->showAppMessage(msg);
+        QGC::showAppMessage(msg);
     }
 
     if (_communicationLost) {
@@ -248,7 +235,7 @@ void VehicleLinkManager::_removeLink(LinkInterface *link)
 
 void VehicleLinkManager::_linkDisconnected()
 {
-    qCDebug(VehicleLog) << Q_FUNC_INFO << "linkCount" << _rgLinkInfo.count();
+    qCDebug(VehicleLinkManagerLog) << Q_FUNC_INFO << "linkCount" << _rgLinkInfo.count();
 
     LinkInterface *link = qobject_cast<LinkInterface*>(sender());
     if (!link) {
@@ -258,7 +245,10 @@ void VehicleLinkManager::_linkDisconnected()
     _removeLink(link);
     _updatePrimaryLink();
     if (_rgLinkInfo.isEmpty() && !_allLinksRemovedSignalledByCloseVehicle) {
-        qCDebug(VehicleLog) << "signalling allLinksRemoved";
+        qCDebug(VehicleLinkManagerLog) << "signalling allLinksRemoved";
+        // Stop command processing timers immediately to prevent callbacks during the
+        // asynchronous vehicle destruction sequence
+        _vehicle->_stopCommandProcessing();
         emit allLinksRemoved(_vehicle);
     }
 }
@@ -272,10 +262,10 @@ SharedLinkInterfacePtr VehicleLinkManager::_bestActivePrimaryLink()
             continue;
         }
 
-        SharedLinkInterfacePtr link = linkInfo.link;
-        auto linkInterface = link.get();
+        SharedLinkInterfacePtr candidateLink = linkInfo.link;
+        auto linkInterface = candidateLink.get();
         if (linkInterface && LinkManager::isLinkUSBDirect(linkInterface)) {
-            return link;
+            return candidateLink;
         }
     }
 #endif
@@ -286,18 +276,18 @@ SharedLinkInterfacePtr VehicleLinkManager::_bestActivePrimaryLink()
             continue;
         }
 
-        SharedLinkInterfacePtr link = linkInfo.link;
-        const SharedLinkConfigurationPtr config = link->linkConfiguration();
+        SharedLinkInterfacePtr candidateLink = linkInfo.link;
+        const SharedLinkConfigurationPtr config = candidateLink->linkConfiguration();
         if (config && !config->isHighLatency()) {
-            return link;
+            return candidateLink;
         }
     }
 
     // Last possible choice is a high latency link
-    SharedLinkInterfacePtr link = _primaryLink.lock();
-    if (link && link->linkConfiguration()->isHighLatency()) {
+    SharedLinkInterfacePtr primaryLink = _primaryLink.lock();
+    if (primaryLink && primaryLink->linkConfiguration()->isHighLatency()) {
         // Best choice continues to be the current high latency link
-        return link;
+        return primaryLink;
     }
 
     // Pick any high latency link if one exists
@@ -306,10 +296,10 @@ SharedLinkInterfacePtr VehicleLinkManager::_bestActivePrimaryLink()
             continue;
         }
 
-        SharedLinkInterfacePtr link = linkInfo.link;
-        const SharedLinkConfigurationPtr config = link->linkConfiguration();
+        SharedLinkInterfacePtr candidateLink = linkInfo.link;
+        const SharedLinkConfigurationPtr config = candidateLink->linkConfiguration();
         if (config && config->isHighLatency()) {
-            return link;
+            return candidateLink;
         }
     }
 
@@ -370,6 +360,9 @@ void VehicleLinkManager::closeVehicle()
     _rgLinkInfo.clear();
 
     _allLinksRemovedSignalledByCloseVehicle = true; // Prevent double signal of allLinksRemoved
+    // Stop command processing timers immediately to prevent callbacks during the
+    // asynchronous vehicle destruction sequence
+    _vehicle->_stopCommandProcessing();
     emit allLinksRemoved(_vehicle);
 }
 

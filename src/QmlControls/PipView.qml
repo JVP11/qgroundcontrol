@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Window
 
@@ -26,6 +17,9 @@ Item {
     /// When true, map (item1) is always full-screen (ASTHRA embedded layout).
     property bool   forceMapFull:           false
 
+    // Area covering the parent, in PipView coordinates: just the restore button while collapsed
+    readonly property rect occupiedRect: _isExpanded ? Qt.rect(0, 0, width, height) : Qt.rect(showPip.x, showPip.y, showPip.width, showPip.height)
+
     readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
 
     property var    _fullItem
@@ -43,6 +37,8 @@ Item {
         _componentComplete = true
     }
 
+    // item1 can swap at runtime (fly view map engine Loader), not just item2
+    onItem1Changed: _initForItems()
     onItem2Changed: _initForItems()
 
     function showWindow() {
@@ -52,6 +48,12 @@ Item {
     }
 
     function _initForItems() {
+        if (!item1) {
+            // Engine swap in flight: wait for the new item1
+            _fullItem = null
+            _pipOrWindowItem = null
+            return
+        }
         var item1IsFull = forceMapFull || QGroundControl.loadBoolGlobalSetting(item1IsFullSettingsKey, true)
         if (item1 && item2) {
             item1.pipState.state = item1IsFull ? item1.pipState.fullState : item1.pipState.pipState
@@ -67,6 +69,10 @@ Item {
     }
 
     function _swapPip() {
+        if (!item1 || !item2) {
+            // Engine swap in flight (see _initForItems)
+            return
+        }
         var item1IsFull = false
         if (item1.pipState.state === item1.pipState.fullState) {
             item1.pipState.state = item1.pipState.pipState
@@ -195,7 +201,11 @@ Item {
 
         MouseArea {
             anchors.fill:   parent
-            onClicked:      _pipOrWindowItem.pipState.state = _pipOrWindowItem.pipState.windowState
+            onClicked: {
+                if (_pipOrWindowItem) {
+                    _pipOrWindowItem.pipState.state = _pipOrWindowItem.pipState.windowState
+                }
+            }
         }
     }
 

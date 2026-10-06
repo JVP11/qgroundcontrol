@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2025 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 // This is an example class c++ file which is used to describe the QGroundControl
 // coding style. In general almost everything in here has some coding style meaning.
 // Not all style choices are explained.
@@ -225,5 +216,15 @@ template <Numeric T>
 T clampValue(T value, T min, T max)
 {
     return std::clamp(value, min, max);
+}
+
+// Stream each value on its own line aligned under the first operand, and don't
+// repeat the function name in the message (the logging formatter already adds it).
+void exampleMultiValueLogging(uint8_t fromCompId, const QString& fromURI, const QString& toDir, const QString& fileName)
+{
+    qCDebug(CodingStyleLog) << "fromCompId:" << fromCompId
+                            << "fromURI:" << fromURI
+                            << "toDir:" << toDir
+                            << "fileName:" << fileName;
 }
 }  // anonymous namespace

@@ -1,25 +1,14 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
 #pragma once
 
 #include <QtCore/QObject>
 #include <QtCore/QVariant>
 #include <QtQmlIntegration/QtQmlIntegration>
 
+#include "QmlObjectListModel.h"
 #include "FactPanelController.h"
 
-/// MVC Controller for AirframeComponent.qml.
+/// \brief MVC Controller for AirframeComponent.qml.
+///
 class AirframeComponentController : public FactPanelController
 {
     Q_OBJECT

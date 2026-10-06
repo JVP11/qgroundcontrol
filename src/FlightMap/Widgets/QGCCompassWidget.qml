@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
@@ -67,12 +58,7 @@ Rectangle {
     Item {
         id:             rotationParent
         anchors.fill:   parent
-
-        transform: Rotation {
-            origin.x:       rotationParent.width  / 2
-            origin.y:       rotationParent.height / 2
-            angle:         _lockNoseUpCompass ? -_heading : 0
-        }
+        rotation:           _lockNoseUpCompass ? -_heading : 0
 
         CompassDial {
             anchors.fill:   parent
@@ -93,12 +79,7 @@ Rectangle {
             anchors.fill:       parent
             sourceSize.height:  parent.height
             visible:            showCOG()
-
-            transform: Rotation {
-                origin.x:   cogPointer.width  / 2
-                origin.y:   cogPointer.height / 2
-                angle:      _courseOverGround
-            }
+            rotation:           _courseOverGround
         }
 
         Image {
@@ -109,12 +90,7 @@ Rectangle {
             anchors.fill:       parent
             sourceSize.height:  parent.height
             visible:            showHeadingToNextWP()
-
-            transform: Rotation {
-                origin.x:   nextWPPointer.width  / 2
-                origin.y:   nextWPPointer.height / 2
-                angle:      _headingToNextWP
-            }
+            rotation:           _headingToNextWP
         }
 
         // Launch location indicator
@@ -132,13 +108,15 @@ Rectangle {
                 font.bold:          true
                 color:              qgcPal.text
                 anchors.centerIn:   parent
+                rotation:           _lockNoseUpCompass ? _heading : 0
             }
 
             transform: Translate {
-                property double _angle: _headingToHome
+                property double _angle:        _headingToHome
+                property real   _labelOffset:  root.width / 2 + ScreenTools.defaultFontPixelHeight / 2
 
-                x: translateCenterToAngleX(parent.width / 2, _angle)
-                y: translateCenterToAngleY(parent.height / 2, _angle)
+                x: translateCenterToAngleX(_labelOffset, _angle)
+                y: translateCenterToAngleY(_labelOffset, _angle)
             }
         }
     }

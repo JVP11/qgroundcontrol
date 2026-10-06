@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
@@ -14,8 +5,10 @@
 class PlanMasterController;
 
 
-/// This is the abstract base clas for Plan Element controllers.
+/// \brief This is the abstract base clas for Plan Element controllers.
+///
 /// Examples of plan elements are: missions (MissionController), geofence (GeoFenceController)
+///
 class PlanElementController : public QObject
 {
     Q_OBJECT

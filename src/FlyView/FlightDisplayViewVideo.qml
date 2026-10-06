@@ -1,13 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 import QtQuick
 import QtQuick.Controls
 
@@ -22,8 +12,8 @@ Item {
 
     property bool useSmallFont: true
 
-    property double _ar:                QGroundControl.videoManager.gstreamerEnabled
-                                            ? QGroundControl.videoManager.videoSize.width / QGroundControl.videoManager.videoSize.height
+    property double _ar:                (cameraLoader.visible && cameraLoader.status === Loader.Ready)
+                                            ? cameraLoader.item.implicitWidth / cameraLoader.item.implicitHeight
                                             : QGroundControl.videoManager.aspectRatio
     property bool   _showGrid:          QGroundControl.settingsManager.videoSettings.gridLines.rawValue
     property var    _dynamicCameras:    globals.activeVehicle ? globals.activeVehicle.cameraManager : null
@@ -33,6 +23,8 @@ Item {
     property var    _camera:            _isCamera ? _dynamicCameras.cameras.get(_curCameraIndex) : null
     property bool   _hasZoom:           _camera && _camera.hasZoom
     property int    _fitMode:           QGroundControl.settingsManager.videoSettings.videoFit.rawValue
+    property bool   _showStreamLoader:  QGroundControl.videoManager.decoding
+    property bool   _showUvcLoader:     QGroundControl.videoManager.isUvc
 
     property bool   _isMode_FIT_WIDTH:  _fitMode === 0
     property bool   _isMode_FIT_HEIGHT: _fitMode === 1
@@ -53,7 +45,7 @@ Item {
             anchors.fill:   parent
             source:         "/res/NoVideoBackground.jpg"
             fillMode:       Image.PreserveAspectCrop
-            visible:        !(QGroundControl.videoManager.decoding)
+            visible:        !_showStreamLoader && !_showUvcLoader
 
             Rectangle {
                 anchors.centerIn:   parent
@@ -78,7 +70,7 @@ Item {
         id:             videoBackground
         anchors.fill:   parent
         color:          "black"
-        visible:        QGroundControl.videoManager.decoding
+        visible:        _showStreamLoader || _showUvcLoader
         function getWidth() {
             if(_ar != 0.0){
                 if(_isMode_FIT_HEIGHT
@@ -109,76 +101,76 @@ Item {
             }
             return root.height
         }
-        Component {
-            id: videoBackgroundComponent
-            QGCVideoBackground {
-                id:             videoContent
-                objectName:     "videoContent"
+        Loader {
+            id:                 videoStreamLoader
+            anchors.fill:       videoContentArea
+            visible:            _showStreamLoader
+            sourceComponent:    videoOutputComponent
 
-                Connections {
-                    target: QGroundControl.videoManager
-                    function onImageFileChanged(filename) {
-                        videoContent.grabToImage(function(result) {
-                            if (!result.saveToFile(filename)) {
-                                console.error('Error capturing video frame');
-                            }
-                        });
-                    }
-                }
+            property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
+        }
+        Component {
+            id: videoOutputComponent
+            FlightDisplayViewVideoOutput {
+            }
+        }
+        //-- UVC Video (USB Camera or Video Device)
+        Loader {
+            id:             cameraLoader
+            anchors.fill:   videoContentArea
+            visible:        _showUvcLoader
+            source:         _showUvcLoader ? "qrc:/qml/QGroundControl/FlyView/FlightDisplayViewUVC.qml" : "qrc:/qml/QGroundControl/FlyView/FlightDisplayViewDummy.qml"
+        }
+
+        Item {
+            id:                 videoContentArea
+            height:             parent.getHeight()
+            width:              parent.getWidth()
+            anchors.centerIn:   parent
+            visible:           _showStreamLoader || _showUvcLoader
+
+            // grid lines
+            Item {
+                anchors.fill:   parent
+                visible:        _showGrid && !QGroundControl.videoManager.fullScreen
 
                 Rectangle {
                     color:  Qt.rgba(1,1,1,0.5)
                     height: parent.height
                     width:  1
                     x:      parent.width * 0.33
-                    visible: _showGrid && !QGroundControl.videoManager.fullScreen
                 }
                 Rectangle {
                     color:  Qt.rgba(1,1,1,0.5)
                     height: parent.height
                     width:  1
                     x:      parent.width * 0.66
-                    visible: _showGrid && !QGroundControl.videoManager.fullScreen
                 }
                 Rectangle {
                     color:  Qt.rgba(1,1,1,0.5)
                     width:  parent.width
                     height: 1
                     y:      parent.height * 0.33
-                    visible: _showGrid && !QGroundControl.videoManager.fullScreen
                 }
                 Rectangle {
                     color:  Qt.rgba(1,1,1,0.5)
                     width:  parent.width
                     height: 1
                     y:      parent.height * 0.66
-                    visible: _showGrid && !QGroundControl.videoManager.fullScreen
                 }
             }
-        }
-        Loader {
-            // GStreamer is causing crashes on Lenovo laptop OpenGL Intel drivers. In order to workaround this
-            // we don't load a QGCVideoBackground object when video is disabled. This prevents any video rendering
-            // code from running. Hence the Loader to completely remove it.
-            height:             parent.getHeight()
-            width:              parent.getWidth()
-            anchors.centerIn:   parent
-            visible:            QGroundControl.videoManager.decoding
-            sourceComponent:    videoBackgroundComponent
-
-            property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
         }
 
         //-- Thermal Image
         Item {
             id:                 thermalItem
             width:              height * QGroundControl.videoManager.thermalAspectRatio
-            height:             _camera ? (_camera.thermalMode === MavlinkCameraControl.THERMAL_FULL ? parent.height : (_camera.thermalMode === MavlinkCameraControl.THERMAL_PIP ? ScreenTools.defaultFontPixelHeight * 12 : parent.height * _thermalHeightFactor)) : 0
+            height:             _camera ? (_camera.thermalMode === MavlinkCameraControlInterface.THERMAL_FULL ? parent.height : (_camera.thermalMode === MavlinkCameraControlInterface.THERMAL_PIP ? ScreenTools.defaultFontPixelHeight * 12 : parent.height * _thermalHeightFactor)) : 0
             anchors.centerIn:   parent
-            visible:            QGroundControl.videoManager.hasThermal && _camera.thermalMode !== MavlinkCameraControl.THERMAL_OFF
+            visible:            QGroundControl.videoManager.hasThermal && _camera && _camera.thermalMode !== MavlinkCameraControlInterface.THERMAL_OFF
             function pipOrNot() {
                 if(_camera) {
-                    if(_camera.thermalMode === MavlinkCameraControl.THERMAL_PIP) {
+                    if(_camera.thermalMode === MavlinkCameraControlInterface.THERMAL_PIP) {
                         anchors.centerIn    = undefined
                         anchors.top         = parent.top
                         anchors.topMargin   = mainWindow.header.height + (ScreenTools.defaultFontPixelHeight * 0.5)
@@ -200,11 +192,17 @@ Item {
             onVisibleChanged: {
                 thermalItem.pipOrNot()
             }
-            QGCVideoBackground {
+            Loader {
                 id:             thermalVideo
-                objectName:     "thermalVideo"
                 anchors.fill:   parent
-                opacity:        _camera ? (_camera.thermalMode === MavlinkCameraControl.THERMAL_BLEND ? _camera.thermalOpacity / 100 : 1.0) : 0
+                opacity:        _camera ? (_camera.thermalMode === MavlinkCameraControlInterface.THERMAL_BLEND ? _camera.thermalOpacity / 100 : 1.0) : 0
+                sourceComponent: thermalOutputComponent
+                onLoaded: { if (item) item.objectName = "thermalVideo" }
+
+                Component {
+                    id: thermalOutputComponent
+                    FlightDisplayViewVideoOutput {}
+                }
             }
         }
         //-- Zoom

@@ -8,16 +8,17 @@ include(CreateCPackCommon)
 # ----------------------------------------------------------------------------
 # Qt Installer Framework Detection
 # ----------------------------------------------------------------------------
-# Hints for finding QtIFW
-set(CPACK_IFW_ROOT "${Qt6_ROOT_DIR}/../../Tools/QtInstallerFramework/*")
-set(QTIFWDIR "${Qt6_ROOT_DIR}/../../Tools/QtInstallerFramework/*")
+# Hints for finding QtIFW; CPackIFW appends Tools/QtInstallerFramework/<ver>/bin itself.
+if(NOT "$ENV{QT_ROOT_DIR}" STREQUAL "" AND NOT DEFINED CPACK_IFW_ROOT)
+    get_filename_component(CPACK_IFW_ROOT "$ENV{QT_ROOT_DIR}/../.." ABSOLUTE)
+endif()
 
 include(CPackIFW)
 
 # ----------------------------------------------------------------------------
 # IFW Generator Configuration
 # ----------------------------------------------------------------------------
-list(APPEND CPACK_GENERATOR "IFW")
+set(CPACK_GENERATOR "IFW")
 set(CPACK_BINARY_IFW ON)
 
 # Debug output
@@ -26,13 +27,13 @@ set(CPACK_IFW_VERBOSE ON)
 # ----------------------------------------------------------------------------
 # Package Appearance
 # ----------------------------------------------------------------------------
-set(CPACK_IFW_PACKAGE_TITLE "${QGC_INSTALLER_NAME}")
+set(CPACK_IFW_PACKAGE_TITLE "${CMAKE_PROJECT_NAME}")
 set(CPACK_IFW_PACKAGE_PUBLISHER "${QGC_ORG_NAME}")
 set(CPACK_IFW_PRODUCT_URL "${CMAKE_PROJECT_HOMEPAGE_URL}")
 set(CPACK_IFW_PACKAGE_ICON "${QGC_APP_ICON}")
 set(CPACK_IFW_PACKAGE_WINDOW_ICON "${CMAKE_SOURCE_DIR}/resources/icons/qgroundcontrol.png")
 set(CPACK_IFW_PACKAGE_LOGO "${CMAKE_SOURCE_DIR}/resources/QGCLogoFull.svg")
-set(CPACK_IFW_PACKAGE_WATERMARK "${INSTALLER_ROOT}/config/qgroundcontrol.png")
+set(CPACK_IFW_PACKAGE_WATERMARK "${CMAKE_SOURCE_DIR}/resources/icons/qgroundcontrol.png")
 # set(CPACK_IFW_PACKAGE_BANNER "")
 # set(CPACK_IFW_PACKAGE_BACKGROUND "")
 set(CPACK_IFW_PACKAGE_WIZARD_STYLE "Modern")
@@ -45,13 +46,13 @@ set(CPACK_IFW_PACKAGE_WIZARD_STYLE "Modern")
 # ----------------------------------------------------------------------------
 # Platform-Specific Install Directories
 # ----------------------------------------------------------------------------
-if(${CMAKE_SYSTEM_NAME} MATCHES Linux)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CPACK_IFW_TARGET_DIRECTORY "@HomeDir@/${CMAKE_PROJECT_NAME}")
     set(CPACK_IFW_ADMIN_TARGET_DIRECTORY "@HomeDir@/${CMAKE_PROJECT_NAME}")
-elseif(${CMAKE_SYSTEM_NAME} MATCHES Windows)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(CPACK_IFW_TARGET_DIRECTORY "@HomeDir@\\${CMAKE_PROJECT_NAME}")
     set(CPACK_IFW_ADMIN_TARGET_DIRECTORY "@HomeDir@\\${CMAKE_PROJECT_NAME}")
-elseif(${CMAKE_SYSTEM_NAME} MATCHES Darwin)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(CPACK_IFW_TARGET_DIRECTORY "@ApplicationsDir@/${CMAKE_PROJECT_NAME}")
     set(CPACK_IFW_ADMIN_TARGET_DIRECTORY "@ApplicationsDir@/${CMAKE_PROJECT_NAME}")
 endif()
@@ -90,13 +91,13 @@ endif()
 # CPACK_IFW_INSTALLERBASE_EXECUTABLE
 # CPACK_IFW_DEVTOOL_EXECUTABLE
 
-cpack_ifw_configure_component(${CMAKE_PROJECT_NAME}
+cpack_ifw_configure_component(Runtime
     ESSENTIAL FORCED_INSTALLATION
     NAME ${CMAKE_PROJECT_NAME}
     VERSION ${CMAKE_PROJECT_VERSION}
     DESCRIPTION "Welcome to the ${CMAKE_PROJECT_NAME} installer."
     LICENSES "GPL LICENSE" ${CPACK_RESOURCE_FILE_LICENSE}
-    SCRIPT "${CMAKE_SOURCE_DIR}/deploy/installer/packages/org.mavlink.qgroundcontrol/meta/installerscript.js"
+    SCRIPT "${CMAKE_SOURCE_DIR}/deploy/installer/packages/org.mavlink.qgroundcontrol/meta/installscript.js"
 )
 # cpack_ifw_configure_component_group
 # cpack_ifw_add_repository

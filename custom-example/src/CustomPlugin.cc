@@ -1,19 +1,12 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "CustomPlugin.h"
-#include "QmlComponentInfo.h"
+#include "CustomSettings.h"
+#include "PerimeterScanComplexItem.h"
+#include "PerimeterScanPlanCreator.h"
 #include "QGCLoggingCategory.h"
 #include "QGCPalette.h"
 #include "QGCMAVLink.h"
 #include "AppSettings.h"
-#include "BrandImageSettings.h"
+#include "SettingsManager.h"
 
 #include <QtCore/QApplicationStatic>
 #include <QtQml/QQmlApplicationEngine>
@@ -54,60 +47,31 @@ QGCCorePlugin *CustomPlugin::instance()
     return _customPluginInstance();
 }
 
-void CustomPlugin::cleanup()
-{
-    if (_qmlEngine) {
-        _qmlEngine->removeUrlInterceptor(_selector);
-    }
-
-    delete _selector;
-}
-
 void CustomPlugin::_advancedChanged(bool changed)
 {
     // Firmware Upgrade page is only show in Advanced mode
     emit _options->showFirmwareUpgradeChanged(changed);
 }
 
-void CustomPlugin::_addSettingsEntry(const QString &title, const char *qmlFile, const char *iconFile)
+void CustomPlugin::registerCustomSettings(SettingsManager *settingsManager)
 {
-    Q_CHECK_PTR(qmlFile);
-    // 'this' instance will take ownership on the QmlComponentInfo instance
-    _customSettingsList.append(QVariant::fromValue(
-        new QmlComponentInfo(
-            title,
-            QUrl::fromUserInput(qmlFile),
-            !iconFile ? QUrl() : QUrl::fromUserInput(iconFile),
-            this)
-        )
-    );
+    settingsManager->registerCustomSettingsGroup(QStringLiteral("customSettings"), new CustomSettings());
 }
 
-bool CustomPlugin::overrideSettingsGroupVisibility(const QString &name)
+void CustomPlugin::adjustSettingMetaData(const QString& settingsGroup, FactMetaData& metaData, bool &userVisible)
 {
-    // We have set up our own specific brand imaging.
-    // Hide the brand image settings such that the end user can't change it.
-    if (name == BrandImageSettings::name) {
-        return false;
-    }
-
-    return true;
-}
-
-void CustomPlugin::adjustSettingMetaData(const QString& settingsGroup, FactMetaData& metaData, bool &visible)
-{
-    QGCCorePlugin::adjustSettingMetaData(settingsGroup, metaData, visible);
+    QGCCorePlugin::adjustSettingMetaData(settingsGroup, metaData, userVisible);
 
     if (settingsGroup == AppSettings::settingsGroup) {
         // This tells QGC than when you are creating Plans while not connected to a vehicle
         // the specific firmware/vehicle the plan is for.
         if (metaData.name() == AppSettings::offlineEditingFirmwareClassName) {
             metaData.setRawDefaultValue(QGCMAVLink::FirmwareClassPX4);
-            visible = false;
+            userVisible = false;
             return;
         } else if (metaData.name() == AppSettings::offlineEditingVehicleClassName) {
             metaData.setRawDefaultValue(QGCMAVLink::VehicleClassMultiRotor);
-            visible = false;
+            userVisible = false;
             return;
         }
     }
@@ -260,12 +224,12 @@ void CustomPlugin::paletteOverride(const QString &colorName, QGCPalette::Palette
         colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupDisabled]  = QColor("#000000");
         colorInfo[QGCPalette::Light][QGCPalette::ColorGroupEnabled]  = QColor("#212529");
         colorInfo[QGCPalette::Light][QGCPalette::ColorGroupDisabled] = QColor("#000000");
-    } else if (colorName == QStringLiteral("brandingPurple")) {
+    } else if (colorName == QStringLiteral("brandPrimary")) {
         colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupEnabled]   = QColor("#4a2c6d");
         colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupDisabled]  = QColor("#4a2c6d");
         colorInfo[QGCPalette::Light][QGCPalette::ColorGroupEnabled]  = QColor("#4a2c6d");
         colorInfo[QGCPalette::Light][QGCPalette::ColorGroupDisabled] = QColor("#4a2c6d");
-    } else if (colorName == QStringLiteral("brandingBlue")) {
+    } else if (colorName == QStringLiteral("brandAccent")) {
         colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupEnabled]   = QColor("#6045c5");
         colorInfo[QGCPalette::Dark][QGCPalette::ColorGroupDisabled]  = QColor("#48d6ff");
         colorInfo[QGCPalette::Light][QGCPalette::ColorGroupEnabled]  = QColor("#6045c5");
@@ -277,12 +241,25 @@ QQmlApplicationEngine* CustomPlugin::createQmlApplicationEngine(QObject* parent)
 {
     _qmlEngine = QGCCorePlugin::createQmlApplicationEngine(parent);
     _qmlEngine->addImportPath("qrc:/qml/Custom/Widgets");
+    _qmlEngine->addImportPath("qrc:/qml/Custom/Plan");
     // TODO: Investigate _qmlEngine->setExtraSelectors({"custom"})
 
-    _selector = new CustomOverrideInterceptor();
-    _qmlEngine->addUrlInterceptor(_selector);
+    _urlInterceptor = new CustomOverrideInterceptor();
+    _qmlEngine->addUrlInterceptor(_urlInterceptor);
 
     return _qmlEngine;
+}
+
+void CustomPlugin::destroyQmlApplicationEngine(QQmlApplicationEngine *qmlEngine)
+{
+    if (qmlEngine && (qmlEngine == _qmlEngine)) {
+        qmlEngine->removeUrlInterceptor(_urlInterceptor);
+        delete _urlInterceptor;
+        _urlInterceptor = nullptr;
+        _qmlEngine = nullptr;
+    }
+
+    QGCCorePlugin::destroyQmlApplicationEngine(qmlEngine);
 }
 
 /*===========================================================================*/
@@ -296,9 +273,8 @@ CustomOverrideInterceptor::CustomOverrideInterceptor()
 QUrl CustomOverrideInterceptor::intercept(const QUrl &url, QQmlAbstractUrlInterceptor::DataType type)
 {
     switch (type) {
-    using DataType = QQmlAbstractUrlInterceptor::DataType;
-    case DataType::QmlFile:
-    case DataType::UrlString:
+    case QQmlAbstractUrlInterceptor::QmlFile:
+    case QQmlAbstractUrlInterceptor::UrlString:
         if (url.scheme() == QStringLiteral("qrc")) {
             const QString origPath = url.path();
             const QString overrideRes = QStringLiteral(":/Custom%1").arg(origPath);
@@ -316,4 +292,40 @@ QUrl CustomOverrideInterceptor::intercept(const QUrl &url, QQmlAbstractUrlInterc
     }
 
     return url;
+}
+
+/*===========================================================================*/
+
+QVariantList CustomPlugin::complexMissionItemNames(Vehicle *vehicle)
+{
+    // Start with the standard set, then append our custom item.
+    QVariantList items = QGCCorePlugin::complexMissionItemNames(vehicle);
+
+    QVariantMap entry;
+    entry[QStringLiteral("canonicalName")]  = QString(PerimeterScanComplexItem::canonicalName);
+    entry[QStringLiteral("translatedName")] = PerimeterScanComplexItem::tr(PerimeterScanComplexItem::canonicalName);
+    items.append(entry);
+
+    return items;
+}
+
+ComplexMissionItem *CustomPlugin::createComplexMissionItem(const QString &complexItemType,
+                                                            PlanMasterController *masterController,
+                                                            bool flyView,
+                                                            const QString &kmlOrShpFile)
+{
+    if (complexItemType == PerimeterScanComplexItem::canonicalName
+            || complexItemType == PerimeterScanComplexItem::jsonComplexItemTypeValue) {
+        return new PerimeterScanComplexItem(masterController, flyView, kmlOrShpFile);
+    }
+    // Fall back to the built-in factory for all standard item types.
+    return QGCCorePlugin::createComplexMissionItem(complexItemType, masterController, flyView, kmlOrShpFile);
+}
+
+QList<PlanCreator *> CustomPlugin::planCreators(PlanMasterController *planMasterController)
+{
+    // Start with the standard creators, then add ours.
+    QList<PlanCreator *> creators = QGCCorePlugin::planCreators(planMasterController);
+    creators.append(new PerimeterScanPlanCreator(planMasterController));
+    return creators;
 }

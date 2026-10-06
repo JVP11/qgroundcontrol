@@ -1,20 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
 #include "VehicleComponent.h"
-
-/// @file
-///     @brief The Sensors VehicleComponent is used to calibrate the the various sensors associated with the board.
-///     @author Don Gagne <don@thegagnes.com>
 
 class SensorsComponent : public VehicleComponent
 {
@@ -37,6 +23,10 @@ public:
     virtual bool setupComplete(void) const override;
     virtual QUrl setupSource(void) const override;
     virtual QUrl summaryQmlSource(void) const override;
+    QStringList sectionIds() const override;
+    QString sectionDisplayName(const QString& sectionId) const override;
+    bool showFirstSectionOnRootClick() const override { return true; }
+    bool sectionSetupComplete(const QString &sectionId) const override;
 
 private:
     bool _airspeedCalSupported  (void) const;

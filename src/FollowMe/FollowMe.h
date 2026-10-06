@@ -1,21 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
-
-Q_DECLARE_LOGGING_CATEGORY(FollowMeLog)
 
 class Vehicle;
 
@@ -39,7 +26,7 @@ public:
         double vxMetersPerSec;  // X velocity in NED frame in meter / s
         double vyMetersPerSec;  // Y velocity in NED frame in meter / s
         double vzMetersPerSec;  // Z velocity in NED frame in meter / s
-        double pos_std_dev[3];  // -1 for unknown
+        double pos_std_dev[3];
     };
 
     /// Mavlink defined motion reporting capabilities

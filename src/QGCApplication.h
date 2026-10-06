@@ -1,21 +1,13 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QLoggingCategory>
 #include <QtCore/QMap>
 #include <QtCore/QSet>
+#include <QtCore/QTime>
 #include <QtCore/QTimer>
 #include <QtCore/QTranslator>
-#include <QtWidgets/QApplication>
+#include <QtGui/QGuiApplication>
 
 namespace QGCCommandLineParser {
     struct CommandLineParseResult;
@@ -28,12 +20,12 @@ class QGCApplication;
 class QEvent;
 class QPostEventList;
 class QMetaMethod;
-class QMetaObject;
+struct QMetaObject;
 
 #if defined(qApp)
 #undef qApp
 #endif
-#define qApp (static_cast<QGCApplication*>(QApplication::instance()))
+#define qApp (static_cast<QGCApplication*>(QGuiApplication::instance()))
 
 #if defined(qGuiApp)
 #undef qGuiApp
@@ -42,12 +34,9 @@ class QMetaObject;
 
 #define qgcApp() qApp
 
-Q_DECLARE_LOGGING_CATEGORY(QGCApplicationLog)
-
-/// The main application and management class.
-/// Needs QApplication base to support QtCharts module.
-/// TODO: Use QtGraphs to convert to QGuiApplication
-class QGCApplication : public QApplication
+/// \brief The main application and management class.
+///
+class QGCApplication : public QGuiApplication
 {
     Q_OBJECT
 
@@ -57,14 +46,9 @@ public:
     QGCApplication(int &argc, char *argv[], const QGCCommandLineParser::CommandLineParseResult &args);
     ~QGCApplication();
 
-    /// Sets the persistent flag to delete all settings the next time QGroundControl is started.
-    static void deleteAllSettingsNextBoot();
-
-    /// Clears the persistent flag to delete all settings the next time QGroundControl is started.
-    static void clearDeleteAllSettingsNextBoot();
-
     bool runningUnitTests() const { return _runningUnitTests; }
     bool simpleBootTest() const { return _simpleBootTest; }
+    bool bootTestPassed() const { return _bootTestPassed; }
 
     /// Returns true if Qt debug output should be logged to a file
     bool logOutput() const { return _logOutput; }
@@ -79,9 +63,6 @@ public:
     void setLanguage();
     QQuickWindow *mainRootWindow();
     uint64_t msecsSinceBoot() const { return _msecsElapsedTime.elapsed(); }
-    QString numberToString(quint64 number);
-    QString bigSizeToString(quint64 size);
-    QString bigSizeMBToString(quint64 size_MB);
 
     /// Registers the signal such that only the last duplicate signal added is left in the queue.
     void addCompressedSignal(const QMetaMethod &method);
@@ -100,13 +81,22 @@ public:
 
     /// Although public, these methods are internal and should only be called by UnitTest code
     QQmlApplicationEngine *qmlAppEngine() const { return _qmlAppEngine; }
+    /// UI test harnesses create their own QML engine; registering it here lets app-level
+    /// messaging (showAppMessage) reach the test's MainWindow. Pass nullptr on teardown.
+    void setQmlAppEngine(QQmlApplicationEngine *engine)
+    {
+        _qmlAppEngine = engine;
+        _mainRootWindow = nullptr;    // cached from the previous engine's root object
+        _uiTestMode = (engine != nullptr);
+    }
+    /// showRebootAppMessage() debounces repeat messages (2 min). Tests reset the
+    /// debounce per-test so each one deterministically sees its own message.
+    void resetRebootMessageDebounce() { _lastRebootMessageTime = QTime(); }
 
 signals:
     void languageChanged(const QLocale &locale);
 
 public slots:
-    void showVehicleConfig();
-
     void qmlAttemptWindowClose();
 
     /// Get current language
@@ -127,26 +117,28 @@ public slots:
 private slots:
     /// Called when the delay timer fires to show the missing parameters warning
     void _missingParamsDisplay();
-    void _qgcCurrentStableVersionDownloadComplete(const QString &remoteFile, const QString &localFile, const QString &errorMsg);
-    static bool _parseVersionText(const QString &versionString, int &majorVersion, int &minorVersion, int &buildVersion);
     void _showDelayedAppMessages();
 
 private:
     bool compressEvent(QEvent *event, QObject *receiver, QPostEventList *postedEvents) final;
 
-    void _initVideo();
+    bool _initVideo();
+
+    bool _initQmlRootWindow();
 
     /// Initialize the application for normal application boot. Or in other words we are not going to run unit tests.
     void _initForNormalAppBoot();
 
     QObject *_rootQmlObject();
-    void _checkForNewVersion();
+    bool _rebootMessageDebounced();
 
     bool _runningUnitTests = false;
     bool _simpleBootTest = false;
+    bool _uiTestMode = false;    ///< true: QML UI test harness registered its engine via setQmlAppEngine()
     bool _fakeMobile = false;    ///< true: Fake ui into displaying mobile interface
     bool _logOutput = false;    ///< true: Log Qt debug output to file
     quint8 _systemId = 0; ///< MAVLink system ID, 0 means not set
+    QTime _lastRebootMessageTime;    ///< showRebootAppMessage() debounce state
 
     static constexpr int _missingParamsDelayedDisplayTimerTimeout = 1000;   ///< Timeout to wait for next missing fact to come in before display
     QTimer _missingParamsDelayedDisplayTimer;                               ///< Timer use to delay missing fact display
@@ -154,9 +146,6 @@ private:
 
     QQmlApplicationEngine *_qmlAppEngine = nullptr;
     bool _settingsUpgraded = false;    ///< true: Settings format has been upgrade to new version
-    int _majorVersion = 0;
-    int _minorVersion = 0;
-    int _buildVersion = 0;
     QQuickWindow *_mainRootWindow = nullptr;
     QTranslator _qgcTranslatorSourceCode;           ///< translations for source code C++/Qml
     QTranslator _qgcTranslatorQtLibs;               ///< tranlsations for Qt libraries
@@ -165,6 +154,7 @@ private:
     bool _showErrorsInToolbar = false;
     QElapsedTimer _msecsElapsedTime;
     bool _videoManagerInitialized = false;
+    bool _bootTestPassed = true;
 
     QList<QPair<QString /* title */, QString /* message */>> _delayedAppMessages;
 
@@ -188,7 +178,8 @@ private:
     CompressedSignalList _compressedSignals;
 
     const QString _settingsVersionKey = QStringLiteral("SettingsVersion"); ///< Settings key which hold settings version
-    static constexpr const char *_deleteAllSettingsKey = "DeleteAllSettingsNextBoot"; ///< If this settings key is set on boot, all settings will be deleted
 
     const QString _qgcImageProviderId = QStringLiteral("QGCImages");
 };
+
+Q_DECLARE_LOGGING_CATEGORY(QGCAppMessageLog)

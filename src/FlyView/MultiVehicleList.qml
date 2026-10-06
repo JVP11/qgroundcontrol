@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -60,7 +51,7 @@ Item {
     function pauseAvailable() {
         for (var i = 0; i < selectedVehicles.count; i++) {
             var vehicle = selectedVehicles.get(i)
-            if (vehicle.armed === true && vehicle.pauseVehicleSupported) {
+            if (vehicle.armed === true && vehicle.supports.pauseVehicle) {
                 return true
             }
         }

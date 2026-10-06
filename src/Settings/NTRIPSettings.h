@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include "SettingsGroup.h"
@@ -16,7 +7,7 @@ class NTRIPSettings : public SettingsGroup
     Q_OBJECT
 
 public:
-    NTRIPSettings(QObject* parent = nullptr);
+    explicit NTRIPSettings(QObject* parent = nullptr);
 
     DEFINE_SETTING_NAME_GROUP()
 
@@ -27,5 +18,11 @@ public:
     DEFINE_SETTINGFACT(ntripPassword)
     DEFINE_SETTINGFACT(ntripMountpoint)
     DEFINE_SETTINGFACT(ntripWhitelist)
-    DEFINE_SETTINGFACT(ntripUseSpartn)
+    DEFINE_SETTINGFACT(ntripUseTls)
+    DEFINE_SETTINGFACT(ntripAllowSelfSignedCerts)
+    DEFINE_SETTINGFACT(ntripGgaPositionSource)
+    DEFINE_SETTINGFACT(ntripGgaIntervalSec)
+    DEFINE_SETTINGFACT(ntripUdpForwardEnabled)
+    DEFINE_SETTINGFACT(ntripUdpTargetAddress)
+    DEFINE_SETTINGFACT(ntripUdpTargetPort)
 };

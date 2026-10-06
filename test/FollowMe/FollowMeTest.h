@@ -1,20 +1,13 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class FollowMeTest : public UnitTest
+class FollowMeTest : public VehicleTestManualConnect
 {
     Q_OBJECT
 
 private slots:
     void _testFollowMe();
+    void _motionPolicyReports_data();
+    void _motionPolicyReports();
 };

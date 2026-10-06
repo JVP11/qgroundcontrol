@@ -6,21 +6,17 @@ on:
       - master
       - 'Stable*'
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
     paths-ignore:
       - 'docs/**'
   pull_request:
-    paths:
-      - '.github/workflows/windows.yml'
-      - '.github/actions/**'
-      - 'deploy/windows/**'
-      - 'src/**'
-      - 'test/**'
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'tools/setup/*windows*'
+  merge_group:
   workflow_dispatch:
     inputs:
+      debug_runner:
+        description: 'Open an actor-only SSH session after a failure (up to 15 minutes, branches only)'
+        type: boolean
+        default: false
       build_type:
         description: 'Build type'
         required: false
@@ -29,7 +25,6 @@ on:
         options:
           - Release
           - Debug
-  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -37,43 +32,68 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
-  attestations: write
   actions: read
 
+env:
+  AQT_SOURCE: 'git+https://github.com/miurahr/aqtinstall.git@8d961e61720b3c06583517fbc68d57ec0a4e9f95'
+
 jobs:
+  changes:
+    uses: ./.github/workflows/_detect-changes.yml
+    with:
+      platform: windows
+
   build:
     name: Build ${{ matrix.arch }} ${{ matrix.build_type }}
-    runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.should_build == 'true'
+    runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 120
+
+    # id-token/attestations scoped here: only the attestation upload step needs them.
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
 
     strategy:
       fail-fast: false
       matrix:
-        build_type: ${{ inputs.build_type && fromJSON(format('["{0}"]', inputs.build_type)) || fromJSON('["Release"]') }}
+        build_type: ['${{ inputs.build_type || ''Release'' }}']
         variant: [amd64, arm64, arm64-cross]
         include:
           - variant: amd64
-            os: windows-2022
+            runs_on: >-
+              ${{ github.repository_owner == 'mavlink' &&
+                  format('runs-on={0}/{1}', github.run_id,
+                    vars.RUNS_ON_WINDOWS_POOL != '' && format('pool={0}', vars.RUNS_ON_WINDOWS_POOL) ||
+                    'runner=windows-x64-builder') || 'windows-2022' }}
             host: windows
             arch: win64_msvc2022_64
+            preset: Windows
             package: QGroundControl-installer-AMD64
+            gstreamer: true
 
           - variant: arm64
-            os: windows-11-arm
+            runs_on: windows-11-arm
             host: windows_arm64
             arch: win64_msvc2022_arm64
+            preset: Windows-arm64
             package: QGroundControl-installer-ARM64
+            gstreamer: true
 
-          # TODO: Remove qt_version override once aqtinstall supports Qt 6.10.1+ for cross-compiled ARM64
-          # Workaround: Pin to Qt 6.10.0 until aqtinstall fix is released
-          # Tracking: https://github.com/miurahr/aqtinstall/pull/952
           - variant: arm64-cross
-            os: windows-2022
+            runs_on: >-
+              ${{ github.repository_owner == 'mavlink' &&
+                  format('runs-on={0}/{1}', github.run_id,
+                    vars.RUNS_ON_WINDOWS_POOL != '' && format('pool={0}', vars.RUNS_ON_WINDOWS_POOL) ||
+                    'runner=windows-x64-builder') || 'windows-2022' }}
             host: windows
             arch: win64_msvc2022_arm64_cross_compiled
+            preset: Windows-arm64
             package: QGroundControl-installer-AMD64-ARM64
-            qt_version: '6.10.0'
+            gstreamer: false
 
     defaults:
       run:
@@ -85,85 +105,209 @@ jobs:
         with:
           egress-policy: audit
 
+      - name: Record build timeline
+        uses: Kesin11/actions-timeline@v3
+        continue-on-error: true
+        with:
+          show-waiting-runner: true
+
+      - name: Enable RunsOn magic cache
+        if: github.repository_owner == 'mavlink' && matrix.variant != 'arm64'
+        uses: runs-on/action@v2
+        with:
+          metrics: cpu,network,memory,disk,io
+          show_costs: summary
+
       - name: Checkout repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          submodules: recursive
-          fetch-depth: 1
-          fetch-tags: true
+          # Native package versions come from git describe and require reachable tags.
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Get build config
-        id: config
-        uses: ./.github/actions/build-config
-
-      - name: Common setup
-        uses: ./.github/actions/common
-
-      - name: Install GStreamer
-        if: matrix.arch == 'win64_msvc2022_64'
-        shell: pwsh
-        run: |
-          ./tools/setup/install-dependencies-windows.ps1 `
-            -GStreamerVersion ${{ steps.config.outputs.gstreamer_windows_version }} `
-            -SkipVulkan
-
-      - name: Setup cache
-        uses: ./.github/actions/cache
+      - name: Install Visual Studio Build Tools
+        if: github.repository_owner == 'mavlink' && matrix.variant != 'arm64'
+        uses: ./.github/actions/install-dependencies
         with:
-          host: ${{ matrix.host }}
-          target: ${{ matrix.arch }}
+          gstreamer: 'false'
+          msvc: 'true'
+          msvc-arm64: ${{ matrix.variant == 'arm64-cross' }}
+          nsis: 'true'
+
+      - name: Build Setup
+        id: build-setup
+        uses: ./.github/actions/build-setup
+        with:
+          qt-host: ${{ matrix.host }}
+          qt-arch: ${{ matrix.arch }}
+          aqt-source: ${{ env.AQT_SOURCE }}
           build-type: ${{ matrix.build_type }}
-          cpm-modules: ${{ runner.temp }}\build\cpm_modules
-          save-cache: ${{ github.event_name != 'pull_request' }}
-
-      - name: Install Qt ${{ matrix.qt_version || steps.config.outputs.qt_version }}
-        uses: ./.github/actions/qt-install
-        with:
-          version: ${{ matrix.qt_version || steps.config.outputs.qt_version }}
-          host: ${{ matrix.host }}
-          arch: ${{ matrix.arch }}
-          modules: ${{ steps.config.outputs.qt_modules }}
-
-      - name: Set up MSVC environment
-        uses: TheMrMilchmann/setup-msvc-dev@v4
-        with:
-          arch: ${{ (matrix.arch == 'win64_msvc2022_64' && 'x64') || (matrix.arch == 'win64_msvc2022_arm64' && 'arm64') || 'amd64_arm64' }}
 
       - name: Configure
-        working-directory: ${{ runner.temp }}\build
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: ${{ matrix.build_type }}
+          preset: ${{ matrix.build_type == 'Debug' && format('{0}-debug', matrix.preset) || matrix.preset }}
+          extra-args: >-
+            -DQGC_BUILD_PORTABLE_TESTS=${{ matrix.variant == 'amd64' && 'ON' || 'OFF' }}
+            -DQGC_ENABLE_GST_VIDEOSTREAMING=${{ matrix.gstreamer && 'ON' || 'OFF' }}
+            -DQGC_CPACK_GENERATOR=NSIS
+            ${{ matrix.variant == 'arm64-cross' && format('-DQT_HOST_PATH={0}', steps.build-setup.outputs.host_qt_root_dir) || '' }}
+
+      - name: Resolve GStreamer root
+        id: gst-root
+        if: matrix.gstreamer
+        shell: bash
         run: |
-          ${{ env.QT_ROOT_DIR }}\bin\qt-cmake -S ${{ github.workspace }} -B . -G Ninja ^
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
-            -DQGC_STABLE_BUILD=${{ (github.ref_type == 'tag' || contains(github.ref, 'Stable')) && 'ON' || 'OFF' }} ^
-            -DQGC_ENABLE_GST_VIDEOSTREAMING=${{ matrix.arch == 'win64_msvc2022_64' && 'ON' || 'OFF' }} ^
-            -DQT_HOST_PATH=${{ (matrix.arch == 'win64_msvc2022_arm64_cross_compiled') && format('{0}\\..\\msvc2022_64', env.QT_ROOT_DIR) || '' }}
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/cmake_helper.py" cache-var \
+            --build-dir "${RUNNER_TEMP}/build" \
+            --name GStreamer_ROOT_DIR \
+            --required \
+            --output-key gst_root
+
+      - name: Add GStreamer to PATH
+        if: matrix.gstreamer
+        shell: bash
+        run: echo "${STEPS_GST_ROOT_OUTPUTS_GST_ROOT}/bin" >> "$GITHUB_PATH"
+        env:
+          STEPS_GST_ROOT_OUTPUTS_GST_ROOT: ${{ steps.gst-root.outputs.gst_root }}
 
       - name: Build
-        working-directory: ${{ runner.temp }}\build
-        run: cmake --build . --target all --config ${{ matrix.build_type }} --parallel
+        id: build
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: ${{ matrix.build_type }}
+
+      - name: Run portable tests
+        id: portable
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.variant == 'amd64' }}
+        uses: ./.github/actions/run-unit-tests
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: ${{ matrix.build_type }}
+          include-labels: Portable
+          junit-output: junit-portable.xml
+          ctest-output: portable-output.txt
+
+      - name: Report portable tests
+        if: ${{ !cancelled() && steps.portable.outcome != 'skipped' && steps.portable.outcome != '' }}
+        uses: ./.github/actions/test-report
+        with:
+          name: Portable tests (windows)
+          build-dir: ${{ runner.temp }}/build
+          junit-file: junit-portable.xml
+          output-file: portable-output.txt
+          artifact-name: test-results-portable-windows
 
       - name: Verify Executable
-        if: matrix.build_type == 'Release' && matrix.arch != 'win64_msvc2022_arm64_cross_compiled'
-        working-directory: ${{ runner.temp }}\build\${{ matrix.build_type }}
-        run: QGroundControl.exe --simple-boot-test
+        if: matrix.build_type == 'Release' && matrix.variant != 'arm64-cross'
+        uses: ./.github/actions/verify-executable
+        with:
+          binary-path: ${{ runner.temp }}/build/${{ matrix.build_type }}/QGroundControl.exe
+          type: exe
+          build-dir: ${{ runner.temp }}/build
 
       - name: Create Installer
-        working-directory: ${{ runner.temp }}\build
-        run: cmake --install . --config ${{ matrix.build_type }}
-
-      - name: Attest Build Provenance
-        if: matrix.build_type == 'Release' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/attest-build-provenance@v3
+        uses: ./.github/actions/cmake-build
         with:
-          subject-path: '${{ runner.temp }}\build\${{ matrix.package }}.exe'
+          build-dir: ${{ runner.temp }}\build
+          build-type: ${{ matrix.build_type }}
+          target: qgc-package
+          parallel: 'false'
 
-      - name: Upload artifact (installer)
+      - name: Verify installer checksum
+        id: installer
         if: matrix.build_type == 'Release'
-        uses: ./.github/actions/upload
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ runner.temp }}\build\${{ matrix.package }}.exe
+        run: |
+          $installerPath = $env:INSTALLER_PATH
+          $checksumPath = "$installerPath.sha256"
+          if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+            Write-Error "Installer not found: $installerPath"
+            exit 1
+          }
+          if (-not (Test-Path -LiteralPath $checksumPath -PathType Leaf)) {
+            Write-Error "Installer checksum not found: $checksumPath"
+            exit 1
+          }
+
+          $checksumLine = (Get-Content -LiteralPath $checksumPath -Raw).Trim()
+          $checksumFields = @($checksumLine -split '\s+', 2)
+          if ($checksumFields.Count -ne 2 -or $checksumFields[0] -notmatch '^[0-9A-Fa-f]{64}$') {
+            Write-Error "Invalid SHA-256 checksum file: $checksumPath"
+            exit 1
+          }
+
+          $installerName = [System.IO.Path]::GetFileName($installerPath)
+          $checksumInstallerName = $checksumFields[1]
+          if ($checksumInstallerName -cne $installerName) {
+            Write-Error "Checksum filename mismatch: expected $installerName, got $checksumInstallerName"
+            exit 1
+          }
+
+          $expectedHash = $checksumFields[0]
+          $actualHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash
+          if ($actualHash -ne $expectedHash) {
+            Write-Error "Installer checksum mismatch: expected $expectedHash, got $actualHash"
+            exit 1
+          }
+
+          "path=$installerPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "checksum_path=$checksumPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Install, upgrade, and verify installer
+        if: matrix.build_type == 'Release' && matrix.variant != 'arm64-cross'
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ steps.installer.outputs.path }}
+          OLD_INSTALL_DIR: ${{ runner.temp }}\qgc-install-old
+          INSTALL_DIR: ${{ runner.temp }}\qgc-install-test
+          EXPECT_GSTREAMER: ${{ matrix.gstreamer }}
+        run: ./deploy/windows/verify-installer.ps1 -Phase Install
+
+      - name: Remove build SDK from PATH for installed verification
+        if: matrix.build_type == 'Release' && matrix.gstreamer
+        shell: pwsh
+        env:
+          GST_ROOT: ${{ steps.gst-root.outputs.gst_root }}
+        run: |
+          $sdkBin = Join-Path $env:GST_ROOT "bin"
+          $sanitizedPath = (($env:PATH -split ';') | Where-Object { $_ -and ($_ -ne $sdkBin) }) -join ';'
+          "QGC_VERIFY_INSTALLED_PATH=$sanitizedPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Verify installed executable
+        if: matrix.build_type == 'Release' && matrix.variant != 'arm64-cross'
+        uses: ./.github/actions/verify-executable
+        env:
+          PATH: ${{ env.QGC_VERIFY_INSTALLED_PATH || env.PATH }}
         with:
-          artifact_name: ${{ matrix.package }}.exe
-          package_name: ${{ matrix.package }}
-          aws_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_distribution_id: ${{ secrets.AWS_DISTRIBUTION_ID }}
-          upload_aws: ${{ matrix.arch == 'win64_msvc2022_arm64_cross_compiled' && 'false' || 'true' }}
+          binary-path: ${{ env.QGC_INSTALL_TEST_BINARY }}
+          type: exe
+
+      - name: Uninstall and verify cleanup
+        if: matrix.build_type == 'Release' && matrix.variant != 'arm64-cross'
+        shell: pwsh
+        run: ./deploy/windows/verify-installer.ps1 -Phase Uninstall
+
+      - name: Attest and Upload
+        if: matrix.build_type == 'Release'
+        uses: ./.github/actions/attest-and-upload
+        with:
+          artifact-name: ${{ matrix.package }}.exe
+          package-name: ${{ matrix.package }}
+          subject-name: ${{ matrix.package }}-windows
+          artifact-source-path: ${{ steps.installer.outputs.path }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-distribution-id: ${{ secrets.AWS_DISTRIBUTION_ID }}
+          upload-aws: ${{ matrix.variant == 'arm64-cross' && 'false' || 'true' }}
+
+      - name: Debug failed runner
+        if: ${{ failure() && !cancelled() && github.event_name == 'workflow_dispatch' && inputs.debug_runner && github.ref_type == 'branch' }}
+        timeout-minutes: 15
+        uses: ./.github/actions/debug-runner

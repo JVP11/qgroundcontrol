@@ -1,17 +1,11 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "VehicleGPS2FactGroup.h"
-#include "Vehicle.h"
-#include "QGCGeo.h"
 
 #include <QtPositioning/QGeoCoordinate>
+
+#include "MAVLinkLib.h"
+#include "QGCGeo.h"
+#include "Vehicle.h"
+#include "development/mavlink_msg_gnss_integrity.h"
 
 void VehicleGPS2FactGroup::handleMessage(Vehicle *vehicle, const mavlink_message_t &message)
 {
@@ -20,6 +14,9 @@ void VehicleGPS2FactGroup::handleMessage(Vehicle *vehicle, const mavlink_message
     switch (message.msgid) {
     case MAVLINK_MSG_ID_GPS2_RAW:
         _handleGps2Raw(message);
+        break;
+    case MAVLINK_MSG_ID_GNSS_INTEGRITY:
+        _handleGnssIntegrity(message);
         break;
     default:
         break;

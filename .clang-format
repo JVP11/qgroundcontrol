@@ -11,6 +11,7 @@ IndentWidth: 4
 TabWidth: 4
 UseTab: Never
 ContinuationIndentWidth: 4
+AccessModifierOffset: -4
 
 # Bracing - Custom QGC style
 # Functions/Classes: New line (Allman)
@@ -27,9 +28,9 @@ BraceWrapping:
   BeforeCatch: false
   BeforeElse: false
   IndentBraces: false
-  SplitEmptyFunction: true
+  SplitEmptyFunction: false
   SplitEmptyRecord: true
-AllowShortFunctionsOnASingleLine: None
+AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AllowShortBlocksOnASingleLine: Never
@@ -41,7 +42,7 @@ ReferenceAlignment: Left
 DerivePointerAlignment: false
 
 # Spacing
-SpaceAfterCStyleCast: false
+SpaceAfterCStyleCast: true
 SpaceAfterLogicalNot: false
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeParens: ControlStatements
@@ -55,11 +56,12 @@ SpacesInSquareBrackets: false
 SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^<Q.*>'  # Qt headers
-    Priority: 1
-  - Regex: '^<.*>'   # System/STL headers
+  - Regex: '^<Q.*>'      # Qt headers
     Priority: 2
-  - Regex: '.*'      # Project headers
+  - Regex: '^<[a-z].*>'  # System/STL headers
+    CaseSensitive: true
+    Priority: 1
+  - Regex: '.*'          # Project headers
     Priority: 3
 
 # Alignment
@@ -73,10 +75,11 @@ AlignTrailingComments:
 
 # Line breaks
 AlwaysBreakAfterReturnType: None
-AlwaysBreakTemplateDeclarations: Yes
+AlwaysBreakTemplateDeclarations: true
 BreakBeforeBinaryOperators: None
 BreakBeforeTernaryOperators: true
-BreakConstructorInitializers: BeforeColon
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: Never
 BreakInheritanceList: BeforeColon
 ConstructorInitializerIndentWidth: 4
 
@@ -90,4 +93,5 @@ BinPackParameters: true
 KeepEmptyLinesAtTheStartOfBlocks: false
 MaxEmptyLinesToKeep: 1
 ReflowComments: true
+SeparateDefinitionBlocks: Always
 Standard: c++20

@@ -1,24 +1,20 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "StandardModes.h"
-#include "Vehicle.h"
+
+#include <algorithm>
+
+#include "MAVLinkLib.h"
 #include "QGCLoggingCategory.h"
+#include "QGCMAVLink.h"
+#include "Vehicle.h"
 
 QGC_LOGGING_CATEGORY(StandardModesLog, "Vehicle.StandardModes")
 
 static void requestMessageResultHandler(void *resultHandlerData, MAV_RESULT result,
-                                        [[maybe_unused]] Vehicle::RequestMessageResultHandlerFailureCode_t failureCode,
+                                        VehicleTypes::RequestMessageResultHandlerFailureCode_t failureCode,
                                         const mavlink_message_t &message)
 {
     StandardModes* standardModes = static_cast<StandardModes*>(resultHandlerData);
-    standardModes->gotMessage(result, message);
+    standardModes->gotMessage(result, failureCode, message);
 }
 
 StandardModes::StandardModes(QObject *parent, Vehicle *vehicle)
@@ -26,7 +22,7 @@ StandardModes::StandardModes(QObject *parent, Vehicle *vehicle)
 {
 }
 
-void StandardModes::gotMessage(MAV_RESULT result, const mavlink_message_t &message)
+void StandardModes::gotMessage(MAV_RESULT result, VehicleTypes::RequestMessageResultHandlerFailureCode_t failureCode, const mavlink_message_t &message)
 {
     _requestActive = false;
     if (_wantReset) {
@@ -77,15 +73,24 @@ void StandardModes::gotMessage(MAV_RESULT result, const mavlink_message_t &messa
             "cannotBeSet:" << cannotBeSet <<
             "custom_mode:" << availableModes.custom_mode;
 
-        _modeList += FirmwareFlightMode{
-            name,
-            availableModes.standard_mode,
-            availableModes.custom_mode,
-            !cannotBeSet,
-            advanced,
-            true,  // fixed wing - Since we don't know at this point we assume fixed wing support
-            true   // multi-rotor - Since we don't know at this point we assume multi-rotor support as well
-        };
+        const auto existingMode =
+            std::find_if(_modeList.cbegin(), _modeList.cend(), [&availableModes](const FirmwareFlightMode& mode) {
+                return mode.custom_mode == availableModes.custom_mode;
+            });
+        if (existingMode == _modeList.cend()) {
+            _modeList += FirmwareFlightMode{
+                name, availableModes.standard_mode, availableModes.custom_mode, !cannotBeSet, advanced,
+                true,  // fixed wing - Since we don't know at this point we assume fixed wing support
+                true   // multi-rotor - Since we don't know at this point we assume multi-rotor support as well
+            };
+        } else if (existingMode->mode_name == name) {
+            qCDebug(StandardModesLog) << "Ignoring duplicate mode - name:" << name
+                                      << "custom_mode:" << availableModes.custom_mode;
+        } else {
+            qCWarning(StandardModesLog) << "Ignoring mode with conflicting name - custom_mode:"
+                                        << availableModes.custom_mode << "existing:" << existingMode->mode_name
+                                        << "new:" << name;
+        }
 
         if (availableModes.mode_index >= availableModes.number_modes) { // We are done
             qCDebug(StandardModesLog) << "Completed, num modes:" << availableModes.number_modes;
@@ -97,7 +102,7 @@ void StandardModes::gotMessage(MAV_RESULT result, const mavlink_message_t &messa
             requestMode(availableModes.mode_index + 1);
         }
     } else {
-        qCDebug(StandardModesLog) << "Failed to retrieve available modes - REQUEST_MESSAGE:MAV_RESULT" << result;
+        qCWarning(StandardModesLog) << "Failed to retrieve available modes - REQUEST_MESSAGE:MAV_RESULT" << QGCMAVLink::mavResultToString(result) << "failureCode:" << failureCode;
         emit requestCompleted();
     }
 }

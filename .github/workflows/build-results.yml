@@ -1,22 +1,83 @@
 name: Build Results
 
 on:
-  workflow_run:
-    workflows: [Linux, Windows, MacOS, Android]
+  workflow_run:  # zizmor: ignore[dangerous-triggers] consumes completed-build artifacts + PR metadata; never checks out or runs PR head code
+    # GitHub requires literal workflow names here (no expressions). Keep this
+    # list in sync with build-config.json's `platform_workflows` plus any
+    # non-platform triggers (pre-commit). Drift is enforced by
+    # .github/scripts/tests/test_platform_workflow_names.py.
+    workflows: [Linux, Windows, MacOS, Android, pre-commit]
     types: [completed]
 
 permissions:
   contents: read
   actions: read
-  checks: write
-  pull-requests: write
+
+env:
+  QGC_GH_API_MODE: http
 
 jobs:
+  load-config:
+    name: Load Build Config
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      platform_workflows: ${{ steps.read.outputs.platform_workflows }}
+      pr: ${{ steps.context.outputs.pr }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/build-config.json
+            .github/scripts/report_context.py
+            .github/scripts/ci_bootstrap.py
+            tools/_bootstrap.py
+            tools/setup/read_config.py
+            tools/common
+            tools/qgc_tools
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Read platform_workflows
+        id: read
+        run: |
+          value=$(python3 tools/setup/read_config.py --get build.platform_workflows)
+          if [[ -z "$value" || "$value" == "null" ]]; then
+            echo "::error::platform_workflows missing from build-config.json"
+            exit 1
+          fi
+          echo "platform_workflows=${value}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve report context
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/report_context.py
+
   post-pr-comment:
     name: Post Build Results
+    needs: load-config
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.event == 'pull_request'
+    if: github.event.workflow_run.event == 'pull_request' && needs.load-config.outputs.pr != ''
+    concurrency:
+      group: build-results-pr-${{ needs.load-config.outputs.pr }}
+      cancel-in-progress: false
     timeout-minutes: 10
+
+    # pull-requests/issues write used only by this results-posting job.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Harden Runner
@@ -24,294 +85,195 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Checkout local actions
+        uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/scripts/check-sizes.py
+          sparse-checkout: |
+            .github/actions/gate-platform-workflows
+            .github/actions/build-results-bootstrap
+            .github/scripts/check_baseline_ready.py
+            .github/scripts/report_context.py
+            .github/scripts/ci_bootstrap.py
+            tools/_bootstrap.py
+            tools/common
+            tools/qgc_tools
           sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Get PR number
         id: pr
-        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ needs.load-config.outputs.pr }}
+        run: echo "result=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Check if all platform workflows are complete
+        id: gate
+        if: steps.pr.outputs.result != ''
+        uses: ./.github/actions/gate-platform-workflows
         with:
-          script: |
-            const run = context.payload.workflow_run;
-            if (run.pull_requests && run.pull_requests.length > 0) {
-              return run.pull_requests[0].number;
-            }
-            const prs = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              head: `${context.repo.owner}:${run.head_branch}`
-            });
-            return prs.data.length > 0 ? prs.data[0].number : null;
+          platform-workflows: ${{ needs.load-config.outputs.platform_workflows }}
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          event: pull_request
+          runs-cache-path: ${{ runner.temp }}/workflow-runs-cache.json
+
+      - name: Bootstrap (checkout + Python deps)
+        if: steps.pr.outputs.result != '' && steps.gate.outputs.ready == 'true'
+        uses: ./.github/actions/build-results-bootstrap
 
       - name: Collect build status
-        if: steps.pr.outputs.result != 'null'
+        if: steps.pr.outputs.result != '' && steps.gate.outputs.ready == 'true'
         id: builds
-        uses: actions/github-script@v8
+        env:
+          PLATFORM_WORKFLOWS: ${{ needs.load-config.outputs.platform_workflows }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUNS_CACHE: ${{ runner.temp }}/workflow-runs-cache.json
+        run: |
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/collect_build_status.py" \
+            --repo "$REPO" \
+            --head-sha "$HEAD_SHA" \
+            --platform-workflows "${PLATFORM_WORKFLOWS}" \
+            --event pull_request \
+            --runs-input "${RUNS_CACHE}" \
+            --runs-cache "$RUNS_CACHE"
+
+      - name: Download artifacts from all platform workflows
+        id: download
+        if: steps.pr.outputs.result != '' && steps.builds.outputs.all_complete == 'true'
+        continue-on-error: true
+        uses: ./.github/actions/download-all-artifacts
         with:
-          script: |
-            const headSha = context.payload.workflow_run.head_sha;
+          include-failed: 'true'
+          allow-missing: 'true'
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          workflows: ${{ needs.load-config.outputs.platform_workflows }}
+          event: pull_request
+          runs-file: ${{ runner.temp }}/workflow-runs-cache.json
+          artifact-prefixes: coverage-report,test-results-
+          artifact-metadata-file: workflow-artifacts.json
 
-            const runs = await github.rest.actions.listWorkflowRunsForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head_sha: headSha,
-              per_page: 100
-            });
+      - name: Stop if artifact download failed
+        if: steps.pr.outputs.result != '' && steps.download.outcome == 'failure'
+        run: |
+          echo "::error::Artifact download failed; skipping combined report generation."
+          exit 1
 
-            const platforms = {
-              'Linux': { status: 'Pending', conclusion: 'pending', url: '' },
-              'Windows': { status: 'Pending', conclusion: 'pending', url: '' },
-              'MacOS': { status: 'Pending', conclusion: 'pending', url: '' },
-              'Android': { status: 'Pending', conclusion: 'pending', url: '' }
-            };
+      - name: Collect artifact sizes
+        if: steps.pr.outputs.result != '' && steps.builds.outputs.all_complete == 'true'
+        uses: ./.github/actions/collect-artifact-sizes
+        with:
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          workflows: ${{ needs.load-config.outputs.platform_workflows }}
+          event: pull_request
+          output-file: pr-sizes.json
+          runs-file: ${{ runner.temp }}/workflow-runs-cache.json
+          artifacts-file: workflow-artifacts.json
 
-            for (const run of runs.data.workflow_runs) {
-              if (platforms[run.name]) {
-                if (run.status === 'completed') {
-                  platforms[run.name].status = run.conclusion === 'success' ? 'Passed' : 'Failed';
-                  platforms[run.name].conclusion = run.conclusion;
-                  platforms[run.name].url = run.html_url;
-                } else if (run.status === 'in_progress') {
-                  platforms[run.name].status = 'Running';
-                  platforms[run.name].conclusion = 'in_progress';
-                  platforms[run.name].url = run.html_url;
-                }
-              }
-            }
+      - name: Download pre-commit results artifact
+        if: >-
+          steps.pr.outputs.result != '' &&
+          steps.builds.outputs.all_complete == 'true' &&
+          steps.builds.outputs.precommit_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ steps.builds.outputs.precommit_run_id }}
+          github-token: ${{ github.token }}
+          name: pre-commit-results
+          path: artifacts/pre-commit-results
 
-            let table = '| Platform | Status | Details |\n|----------|--------|--------|\n';
-            for (const [name, info] of Object.entries(platforms)) {
-              const link = info.url ? `[View](${info.url})` : '-';
-              table += `| ${name} | ${info.status} | ${link} |\n`;
-            }
+      - name: Resolve baseline revision
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.result }}
+        run: |
+          sha=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq .base.sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-            const allComplete = Object.values(platforms).every(p =>
-              ['success', 'failure', 'cancelled'].includes(p.conclusion)
-            );
-            const allSuccess = Object.values(platforms).every(p => p.conclusion === 'success');
-
-            let summary = '';
-            if (allComplete) {
-              summary = allSuccess
-                ? 'All builds passed.'
-                : 'Some builds failed.';
-            } else {
-              summary = 'Some builds still in progress.';
-            }
-
-            core.setOutput('table', table);
-            core.setOutput('summary', summary);
-            core.setOutput('all_complete', allComplete);
-
-      - name: Download artifacts from triggering workflow
-        if: steps.pr.outputs.result != 'null'
-        uses: actions/download-artifact@v7
+      - name: Restore baseline snapshot
+        if: steps.builds.outputs.all_complete == 'true'
+        uses: actions/cache/restore@v6
         continue-on-error: true
         with:
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: artifacts
-
-      - name: Restore baseline sizes
-        if: steps.pr.outputs.result != 'null'
-        id: baseline-sizes
-        uses: actions/cache/restore@v5
-        continue-on-error: true
-        with:
-          path: baseline-sizes.json
-          key: artifact-sizes-baseline-latest
-
-      - name: Restore baseline coverage
-        if: steps.pr.outputs.result != 'null'
-        id: baseline-coverage
-        uses: actions/cache/restore@v5
-        continue-on-error: true
-        with:
-          path: baseline-coverage.xml
-          key: coverage-baseline-latest
+          path: |
+            baseline-sizes.json
+            baseline-coverage.xml
+            baseline-context.json
+          key: build-baseline-v2-${{ steps.baseline.outputs.sha }}
+          restore-keys: |
+            build-baseline-v2-${{ steps.baseline.outputs.sha }}-
+            build-baseline-v2-
 
       - name: Generate combined report
-        if: steps.pr.outputs.result != 'null'
+        if: steps.pr.outputs.result != '' && steps.gate.outputs.ready == 'true'
+        env:
+          BUILD_TABLE: ${{ steps.builds.outputs.table }}
+          BUILD_SUMMARY: ${{ steps.builds.outputs.summary }}
+          PRECOMMIT_STATUS: ${{ steps.builds.outputs.precommit_status }}
+          PRECOMMIT_URL: ${{ steps.builds.outputs.precommit_url }}
+          PRECOMMIT_RESULTS_PATH: artifacts/pre-commit-results/pre-commit-results.json
+          TEST_RESULTS_GLOB: artifacts/test-results-*/test-output*.txt
+          COVERAGE_XML: artifacts/coverage-report/coverage.xml
+          BASELINE_COVERAGE_XML: baseline-coverage.xml
+          PR_SIZES_JSON: pr-sizes.json
+          BASELINE_SIZES_JSON: baseline-sizes.json
+          BASELINE_SHA: ${{ steps.baseline.outputs.sha }}
+          TRIGGERED_BY: ${{ github.event.workflow_run.name }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          cat > comment.md << 'HEADER'
-          ## Build Results
-
-          ### Platform Status
-
-          ${{ steps.builds.outputs.table }}
-          **${{ steps.builds.outputs.summary }}**
-
-          HEADER
-
-          # === Test Results Section ===
-          if ls artifacts/test-results-*/test-output.txt 1>/dev/null 2>&1; then
-            echo "### Test Results" >> comment.md
-            echo "" >> comment.md
-
-            TOTAL_PASSED=0
-            TOTAL_FAILED=0
-            TOTAL_SKIPPED=0
-            HAS_FAILURES=false
-
-            for file in artifacts/test-results-*/test-output.txt; do
-              ARCH=$(dirname "$file" | xargs basename | sed 's/test-results-//')
-
-              PASSED=$(grep -c "^PASS" "$file" 2>/dev/null) || PASSED=0
-              FAILED=$(grep -c "^FAIL" "$file" 2>/dev/null) || FAILED=0
-              SKIPPED=$(grep -c "^SKIP" "$file" 2>/dev/null) || SKIPPED=0
-
-              TOTAL_PASSED=$((TOTAL_PASSED + PASSED))
-              TOTAL_FAILED=$((TOTAL_FAILED + FAILED))
-              TOTAL_SKIPPED=$((TOTAL_SKIPPED + SKIPPED))
-
-              if [[ "$FAILED" -gt 0 ]]; then
-                HAS_FAILURES=true
-                echo "**$ARCH**: $PASSED passed, $FAILED failed, $SKIPPED skipped" >> comment.md
-                echo "" >> comment.md
-                echo "<details><summary>Failed tests</summary>" >> comment.md
-                echo "" >> comment.md
-                echo '```' >> comment.md
-                grep "^FAIL" "$file" | head -20 >> comment.md
-                echo '```' >> comment.md
-                echo "</details>" >> comment.md
-              else
-                echo "**$ARCH**: $PASSED passed, $SKIPPED skipped" >> comment.md
-              fi
-              echo "" >> comment.md
-            done
-
-            if [[ "$HAS_FAILURES" == "true" ]]; then
-              echo "**Total: $TOTAL_PASSED passed, $TOTAL_FAILED failed, $TOTAL_SKIPPED skipped**" >> comment.md
-            else
-              echo "**Total: $TOTAL_PASSED passed, $TOTAL_SKIPPED skipped**" >> comment.md
-            fi
-            echo "" >> comment.md
-          fi
-
-          # === Coverage Section ===
-          if [[ -f "artifacts/coverage-report/coverage.xml" ]]; then
-            echo "### Code Coverage" >> comment.md
-            echo "" >> comment.md
-
-            COVERAGE=$(python3 -c "
-          import xml.etree.ElementTree as ET
-          tree = ET.parse('artifacts/coverage-report/coverage.xml')
-          root = tree.getroot()
-          line_rate = float(root.get('line-rate', 0))
-          print(f'{line_rate * 100:.1f}%')
-          " 2>/dev/null || echo "N/A")
-
-            if [[ -f "baseline-coverage.xml" ]]; then
-              BASELINE=$(python3 -c "
-          import xml.etree.ElementTree as ET
-          tree = ET.parse('baseline-coverage.xml')
-          root = tree.getroot()
-          line_rate = float(root.get('line-rate', 0))
-          print(f'{line_rate * 100:.1f}')
-          " 2>/dev/null || echo "0")
-
-              CURRENT=$(python3 -c "
-          import xml.etree.ElementTree as ET
-          tree = ET.parse('artifacts/coverage-report/coverage.xml')
-          root = tree.getroot()
-          line_rate = float(root.get('line-rate', 0))
-          print(f'{line_rate * 100:.1f}')
-          " 2>/dev/null || echo "0")
-
-              DIFF=$(python3 -c "import sys; print(f'{float(sys.argv[1]) - float(sys.argv[2]):+.1f}')" "$CURRENT" "$BASELINE" 2>/dev/null || echo "+0.0")
-
-              echo "| Coverage | Baseline | Change |" >> comment.md
-              echo "|----------|----------|--------|" >> comment.md
-              echo "| $COVERAGE | ${BASELINE}% | ${DIFF}% |" >> comment.md
-            else
-              echo "Coverage: **$COVERAGE**" >> comment.md
-              echo "" >> comment.md
-              echo "*No baseline available for comparison*" >> comment.md
-            fi
-            echo "" >> comment.md
-          fi
-
-          # === Artifact Sizes Section ===
-          python .github/scripts/check-sizes.py artifacts/ --json --output pr-sizes.json 2>/dev/null || true
-
-          if [[ -f "pr-sizes.json" ]]; then
-            echo "### Artifact Sizes" >> comment.md
-            echo "" >> comment.md
-
-            python3 << 'EOF'
-          import json
-          import os
-
-          with open('pr-sizes.json') as f:
-              pr_data = json.load(f)
-
-          baseline = {}
-          if os.path.exists('baseline-sizes.json'):
-              with open('baseline-sizes.json') as f:
-                  baseline_data = json.load(f)
-                  baseline = {a['name']: a for a in baseline_data.get('artifacts', [])}
-
-          lines = []
-
-          if baseline:
-              lines.extend([
-                  '| Artifact | Size | Δ from master |',
-                  '|----------|------|---------------|'
-              ])
-          else:
-              lines.extend([
-                  '| Artifact | Size |',
-                  '|----------|------|'
-              ])
-
-          total_delta = 0
-          for a in pr_data.get('artifacts', []):
-              name = a['name']
-              size = a['size_human']
-
-              if baseline and name in baseline:
-                  old_size = baseline[name]['size_bytes']
-                  new_size = a['size_bytes']
-                  delta = new_size - old_size
-                  total_delta += delta
-
-                  if delta > 0:
-                      delta_str = f'+{delta / 1024 / 1024:.2f} MB (increase)'
-                  elif delta < 0:
-                      delta_str = f'{delta / 1024 / 1024:.2f} MB (decrease)'
-                  else:
-                      delta_str = 'No change'
-
-                  lines.append(f'| {name} | {size} | {delta_str} |')
-              else:
-                  lines.append(f'| {name} | {size} |')
-
-          lines.append('')
-          if baseline and total_delta != 0:
-              direction = 'increased' if total_delta > 0 else 'decreased'
-              lines.append(f'**Total size {direction} by {abs(total_delta) / 1024 / 1024:.2f} MB**')
-          elif not baseline:
-              lines.append('*No baseline available for comparison*')
-
-          with open('sizes-section.md', 'w') as f:
-              f.write('\n'.join(lines))
-          EOF
-
-            cat sizes-section.md >> comment.md
-          fi
-
-          echo "" >> comment.md
-          echo "---" >> comment.md
-          echo "<sub>Updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC') • Triggered by: ${{ github.event.workflow_run.name }}</sub>" >> comment.md
-
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/generate_build_results_comment.py" \
+            --base-dir "${GITHUB_WORKSPACE}" \
+            --output comment.md
           cat comment.md
 
+      - name: Recheck PR head before publishing
+        id: current
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/report_context.py
+
+      - name: Deduplicate prior build-results comments
+        if: steps.current.outputs.current == 'true'
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.result }}
+        with:
+          script: |
+            const issue_number = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(issue_number) || issue_number <= 0) {
+              return;
+            }
+
+            const marker = 'thollander/actions-comment-pull-request "build-results"';
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                per_page: 100
+              }
+            );
+
+            const tagged = comments
+              .filter(c => c.user?.type === 'Bot' && c.body?.includes(marker))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            for (const comment of tagged.slice(1)) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id
+              });
+            }
+
       - name: Post combined comment
-        if: steps.pr.outputs.result != 'null'
+        if: steps.current.outputs.current == 'true'
         uses: thollander/actions-comment-pull-request@v3
         with:
           pr-number: ${{ steps.pr.outputs.result }}
@@ -320,52 +282,104 @@ jobs:
 
   save-baselines:
     name: Save Baselines
+    needs: load-config
     runs-on: ubuntu-latest
     if: >
+      github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'master' &&
       github.event.workflow_run.conclusion == 'success'
+    concurrency:
+      group: save-baselines
+      cancel-in-progress: false
     timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
         with:
-          sparse-checkout: .github/scripts/check-sizes.py
+          egress-policy: audit
+
+      - name: Checkout local actions
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/gate-platform-workflows
+            .github/actions/build-results-bootstrap
+            .github/scripts/check_baseline_ready.py
+            .github/scripts/report_context.py
+            .github/scripts/ci_bootstrap.py
+            tools/_bootstrap.py
+            tools/common
+            tools/qgc_tools
           sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v7
+      - name: Check if all platform workflows succeeded
+        id: gate
+        uses: ./.github/actions/gate-platform-workflows
+        with:
+          platform-workflows: ${{ needs.load-config.outputs.platform_workflows }}
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          event: push
+          require-success: 'true'
+          runs-cache-path: ${{ runner.temp }}/workflow-runs-cache.json
+
+      - name: Bootstrap (checkout + Python deps)
+        if: steps.gate.outputs.ready == 'true'
+        uses: ./.github/actions/build-results-bootstrap
+
+      - name: Download artifacts from all platform workflows
+        if: steps.gate.outputs.ready == 'true'
         continue-on-error: true
+        uses: ./.github/actions/download-all-artifacts
         with:
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: artifacts
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          workflows: ${{ needs.load-config.outputs.platform_workflows }}
+          event: push
+          runs-file: ${{ runner.temp }}/workflow-runs-cache.json
+          artifact-prefixes: coverage-report,test-results-
+          artifact-metadata-file: workflow-artifacts.json
 
-      - name: Save artifact sizes baseline
+      - name: Collect artifact sizes
+        if: steps.gate.outputs.ready == 'true'
+        uses: ./.github/actions/collect-artifact-sizes
+        with:
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          workflows: ${{ needs.load-config.outputs.platform_workflows }}
+          event: push
+          output-file: baseline-sizes.json
+          require-artifacts: 'true'
+          runs-file: ${{ runner.temp }}/workflow-runs-cache.json
+          artifacts-file: workflow-artifacts.json
+
+      - name: Prepare immutable baseline
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          python .github/scripts/check-sizes.py artifacts/ --json --output sizes.json 2>/dev/null || true
-          if [[ -f "sizes.json" ]]; then
-            echo "Saving artifact sizes baseline"
-            cat sizes.json
-          fi
+          test -f baseline-sizes.json
+          test -f artifacts/coverage-report/coverage.xml
+          cp artifacts/coverage-report/coverage.xml baseline-coverage.xml
+          cp "$RUNNER_TEMP/workflow-runs-cache.json" baseline-context.json
 
-      - name: Cache artifact sizes
-        if: hashFiles('sizes.json') != ''
-        uses: actions/cache/save@v5
-        with:
-          path: sizes.json
-          key: artifact-sizes-baseline-${{ github.run_id }}
+      - name: Recheck default branch before publishing
+        id: current
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/report_context.py
 
-      - name: Cache artifact sizes as latest
-        if: hashFiles('sizes.json') != ''
-        uses: actions/cache/save@v5
+      - name: Publish immutable baseline
+        if: steps.current.outputs.current == 'true'
+        uses: actions/cache/save@v6
         with:
-          path: sizes.json
-          key: artifact-sizes-baseline-latest
-
-      - name: Save coverage baseline
-        if: hashFiles('artifacts/coverage-report/coverage.xml') != ''
-        uses: actions/cache/save@v5
-        with:
-          path: artifacts/coverage-report/coverage.xml
-          key: coverage-baseline-latest
+          path: |
+            baseline-sizes.json
+            baseline-coverage.xml
+            baseline-context.json
+          key: build-baseline-v2-${{ github.event.workflow_run.head_sha }}-${{ github.run_id }}-${{ github.run_attempt }}

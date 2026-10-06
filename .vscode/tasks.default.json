@@ -1,7 +1,7 @@
 {
   "inputs": [
     {
-      "description": "Test class name (e.g., FactSystemTest)",
+      "description": "CTest test name or regular expression (e.g., FactSystemTest)",
       "id": "testClass",
       "type": "promptString"
     }
@@ -9,49 +9,53 @@
   "tasks": [
     {
       "args": [
-        "--preset",
-        "default"
+        "configure"
       ],
-      "command": "cmake",
+      "command": "just",
       "group": "build",
       "label": "CMake: Configure (Debug)",
+      "options": {
+        "env": {
+          "BUILD_TYPE": "Debug"
+        }
+      },
       "problemMatcher": [],
       "type": "shell"
     },
     {
       "args": [
-        "--preset",
-        "default-release"
+        "configure"
       ],
-      "command": "cmake",
+      "command": "just",
       "group": "build",
       "label": "CMake: Configure (Release)",
+      "options": {
+        "env": {
+          "BUILD_TYPE": "Release"
+        }
+      },
       "problemMatcher": [],
       "type": "shell"
     },
     {
-      "args": [
-        "--build",
-        "build",
-        "--parallel"
-      ],
-      "command": "cmake",
+      "command": "build",
       "group": {
         "isDefault": true,
         "kind": "build"
       },
       "label": "CMake: Build",
-      "problemMatcher": "$gcc",
-      "type": "shell"
+      "problemMatcher": [],
+      "type": "cmake",
+      "targets": [
+        "QGroundControl"
+      ],
+      "preset": "${command:cmake.activeBuildPresetName}"
     },
     {
       "args": [
-        "--build",
-        "build",
-        "--target",
         "clean"
       ],
-      "command": "cmake",
+      "command": "just",
       "group": "build",
       "label": "CMake: Clean",
       "problemMatcher": [],
@@ -59,23 +63,28 @@
     },
     {
       "args": [
-        "--unittest"
+        "test"
       ],
-      "command": "${workspaceFolder}/build/QGroundControl",
+      "command": "just",
       "dependsOn": "CMake: Build",
       "group": {
         "isDefault": true,
         "kind": "test"
       },
-      "label": "Run Unit Tests",
+      "label": "Run Tests",
       "problemMatcher": [],
       "type": "shell"
     },
     {
       "args": [
-        "--unittest:${input:testClass}"
+        "--preset",
+        "default",
+        "--build-config",
+        "Debug",
+        "-R",
+        "${input:testClass}"
       ],
-      "command": "${workspaceFolder}/build/QGroundControl",
+      "command": "ctest",
       "dependsOn": "CMake: Build",
       "group": "test",
       "label": "Run Specific Test",
@@ -84,41 +93,49 @@
     },
     {
       "args": [
-        "--check"
+        "format"
       ],
-      "command": "${workspaceFolder}/tools/format-check.sh",
+      "command": "just",
       "group": "none",
       "label": "Format: Check Changed Files",
       "problemMatcher": [],
       "type": "shell"
     },
     {
-      "args": [],
-      "command": "${workspaceFolder}/tools/format-check.sh",
+      "args": [
+        "format-fix"
+      ],
+      "command": "just",
       "group": "none",
       "label": "Format: Fix Changed Files",
       "problemMatcher": [],
       "type": "shell"
     },
     {
-      "command": "${workspaceFolder}/tools/analyze.sh",
+      "args": [
+        "analyze"
+      ],
+      "command": "just",
       "group": "none",
       "label": "Static Analysis",
       "problemMatcher": "$gcc",
       "type": "shell"
     },
     {
-      "command": "${workspaceFolder}/tools/clean.sh",
+      "args": [
+        "lint"
+      ],
+      "command": "just",
       "group": "none",
-      "label": "Clean All",
+      "label": "Pre-commit: Run All",
       "problemMatcher": [],
       "type": "shell"
     },
     {
       "args": [
-        "${workspaceFolder}/tools/translations/qgc-lupdate.sh"
+        "translations"
       ],
-      "command": "source",
+      "command": "just",
       "group": "none",
       "label": "Update Translations",
       "problemMatcher": [],

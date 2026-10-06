@@ -26,12 +26,6 @@ target_sources(${CMAKE_PROJECT_NAME}
         UDPLink.h
 )
 
-# USB board information JSON data
-qt_add_resources(${CMAKE_PROJECT_NAME} json_comm
-    PREFIX "/json"
-    FILES USBBoardInfo.json
-)
-
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Uncomment to enable Qt socket debugging
@@ -45,63 +39,15 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 # Serial Port Communication
 # ----------------------------------------------------------------------------
 
-if(QGC_NO_SERIAL_LINK)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_NO_SERIAL_LINK)
-else()
-    target_sources(${CMAKE_PROJECT_NAME}
-        PRIVATE
-            QGCSerialPortInfo.cc
-            QGCSerialPortInfo.h
-            SerialLink.cc
-            SerialLink.h
-            UdpIODevice.cc
-            UdpIODevice.h
-    )
-
-    # Qt SerialPort not available on mobile platforms
-    if(NOT ANDROID AND NOT IOS)
-        target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::SerialPort)
-    endif()
-endif()
+add_subdirectory(Serial)
 
 # ----------------------------------------------------------------------------
 # Bluetooth Communication
 # ----------------------------------------------------------------------------
-if(QGC_ENABLE_BLUETOOTH)
-    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Bluetooth)
-    target_sources(${CMAKE_PROJECT_NAME}
-        PRIVATE
-            BluetoothLink.cc
-            BluetoothLink.h
-    )
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_ENABLE_BLUETOOTH)
-endif()
-
-# ----------------------------------------------------------------------------
-# ZeroConf/mDNS Service Discovery
-# ----------------------------------------------------------------------------
-if(QGC_ZEROCONF_ENABLED)
-    CPMAddPackage(
-        NAME qmdnsengine
-        GITHUB_REPOSITORY nitroshare/qmdnsengine
-        GIT_TAG master
-        OPTIONS
-            "BUILD_DOC OFF"
-            "BUILD_EXAMPLES OFF"
-            "BUILD_TESTS OFF"
-    )
-
-    if(TARGET qmdnsengine)
-        target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE qmdnsengine)
-        target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_ZEROCONF_ENABLED)
-    else()
-        message(WARNING "QGC: qmdnsengine target not created, ZeroConf will be disabled")
-    endif()
-endif()
+add_subdirectory(Bluetooth)
 
 # ============================================================================
 # Communication Link Subdirectories
 # ============================================================================
 
-add_subdirectory(AirLink)
 add_subdirectory(MockLink)

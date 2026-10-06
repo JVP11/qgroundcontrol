@@ -1,16 +1,9 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "ActuatorComponent.h"
+#include "MAVLinkLib.h"
 #include "QGCApplication.h"
 #include "GeometryImage.h"
 #include "Actuators/Actuators.h"
+#include "Vehicle.h"
 
 #include <QtQml/QQmlApplicationEngine>
 

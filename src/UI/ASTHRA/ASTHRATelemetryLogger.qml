@@ -120,9 +120,9 @@ QtObject {
             gps: gps,
             battery: battery,
             link: {
-                rcRSSI: activeVehicle.rcRSSI,
-                telemetryRRSSI: activeVehicle.telemetryRRSSI,
-                telemetryLRSSI: activeVehicle.telemetryLRSSI,
+                rcRSSI: activeVehicle.rcRSSI ? activeVehicle.rcRSSI.rawValue : NaN,
+                telemetryRRSSI: activeVehicle.radioStatus ? activeVehicle.radioStatus.rrssi.rawValue : NaN,
+                telemetryLRSSI: activeVehicle.radioStatus ? activeVehicle.radioStatus.lrssi.rawValue : NaN,
                 messagesReceived: activeVehicle.messagesReceived,
                 messagesSent: activeVehicle.messagesSent,
                 messagesLost: activeVehicle.messagesLost

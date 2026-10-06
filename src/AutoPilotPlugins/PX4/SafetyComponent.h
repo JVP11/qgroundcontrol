@@ -1,21 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 #pragma once
 
 #include "VehicleComponent.h"
-
-/// @file
-///     @brief The Radio VehicleComponent is used to calibrate the trasmitter and assign function mapping
-///             to channels.
-///     @author Don Gagne <don@thegagnes.com>
 
 class SafetyComponent : public VehicleComponent
 {
@@ -35,6 +20,7 @@ public:
     bool setupComplete          (void) const override;
     QUrl setupSource            (void) const override;
     QUrl summaryQmlSource       (void) const override;
+    QString vehicleConfigJson   (void) const override;
     bool allowSetupWhileArmed   (void) const override { return true; }
     bool allowSetupWhileFlying  (void) const override { return true; }
 

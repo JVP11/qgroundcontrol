@@ -1,16 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
 #include "QGCPalette.h"
 #include "QGCCorePlugin.h"
 
@@ -46,6 +33,7 @@ QGCPalette::~QGCPalette()
 
 void QGCPalette::_buildMap()
 {
+    // clang-format off
     // ============================================================================
     // ASTHRA MILITARY-INDUSTRIAL COLOR PALETTE
     // Tactical ground control system - Enhanced military/industrial aesthetic
@@ -72,7 +60,6 @@ void QGCPalette::_buildMap()
     // Disabled text: Dormant Grey #4A4F56 (darker, more industrial)
     // Labels / headers: Command White #D8DCE0 (sharp, readable)
     DECLARE_QGC_COLOR(text,                 "#4A4F56", "#8B9199", "#4A4F56", "#F0F2F4")  // Primary: Tactical White
-    DECLARE_QGC_COLOR(windowTransparentText,"#4A4F56", "#8B9199", "#4A4F56", "#F0F2F4")
     DECLARE_QGC_COLOR(warningText,          "#D4A017", "#D4A017", "#D4A017", "#D4A017")  // Tactical Amber
 
     // === BUTTON COLORS (MILITARY HMI STYLE) ===
@@ -133,6 +120,7 @@ void QGCPalette::_buildMap()
 
     // === GROUP BORDER ===
     DECLARE_QGC_COLOR(groupBorder,          "#1F2327", "#1F2327", "#1F2327", "#1F2327")  // Tactical Steel
+    DECLARE_QGC_COLOR(modifiedParamValue,   "#D4A017", "#D4A017", "#D4A017", "#D4A017")  // Tactical Amber
 
     // ============================================================================
     // NON-THEMED COLORS (consistent across light/dark)
@@ -140,8 +128,8 @@ void QGCPalette::_buildMap()
 
     // === BRANDING ===
     //                                                      Disabled     Enabled
-    DECLARE_QGC_NONTHEMED_COLOR(brandingPurple,             "#050708", "#050708")      // Tactical Black
-    DECLARE_QGC_NONTHEMED_COLOR(brandingBlue,               "#2D4A5F", "#2D4A5F")      // Tactical Blue
+    DECLARE_QGC_NONTHEMED_COLOR(brandPrimary,               "#050708", "#050708")      // Tactical Black
+    DECLARE_QGC_NONTHEMED_COLOR(brandAccent,                "#2D4A5F", "#2D4A5F")      // Tactical Blue
     DECLARE_QGC_NONTHEMED_COLOR(toolStripFGColor,           "#4A4F56", "#F0F2F4")      // Tactical White
     DECLARE_QGC_NONTHEMED_COLOR(photoCaptureButtonColor,    "#8B9199", "#F0F2F4")      // Tactical White
     DECLARE_QGC_NONTHEMED_COLOR(videoCaptureButtonColor,    "#9B2D2D", "#9B2D2D")      // Alert Red
@@ -155,12 +143,7 @@ void QGCPalette::_buildMap()
     DECLARE_QGC_SINGLE_COLOR(surveyPolygonInterior,         "#2A8B55")  // Command Green
     DECLARE_QGC_SINGLE_COLOR(surveyPolygonTerrainCollision, "#7A2525")  // Restricted Red (darker)
 
-// Colors for UTM Adapter
-#ifdef QGC_UTM_ADAPTER
-    DECLARE_QGC_COLOR(switchUTMSP,        "#b0e0e6", "#b0e0e6", "#b0e0e6", "#b0e0e6");
-    DECLARE_QGC_COLOR(sliderUTMSP,        "#9370db", "#9370db", "#9370db", "#9370db");
-    DECLARE_QGC_COLOR(successNotifyUTMSP, "#3cb371", "#3cb371", "#3cb371", "#3cb371");
-#endif
+    // clang-format on
 }
 
 void QGCPalette::setColorGroupEnabled(bool enabled)

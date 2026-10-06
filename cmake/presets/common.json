@@ -4,48 +4,53 @@
     {
       "name": "default",
       "displayName": "Default (Debug)",
-      "description": "Cross-platform debug build with Ninja",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
-      "inherits": ["dev", "debug"]
+      "inherits": [
+        "debug"
+      ]
     },
     {
       "name": "default-release",
       "displayName": "Default (Release)",
-      "description": "Cross-platform release build with Ninja",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
-      "inherits": ["release"]
+      "inherits": [
+        "release"
+      ]
     },
     {
-      "name": "dev",
-      "hidden": true,
-      "warnings": {
-        "dev": true,
-        "deprecated": true,
-        "uninitialized": false,
-        "unusedCli": true,
-        "systemVars": true
-      },
-      "errors": {
-        "dev": true,
-        "deprecated": true
-      }
+      "name": "default-relwithdebinfo",
+      "displayName": "Default (RelWithDebInfo)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "inherits": [
+        "relwithdebinfo"
+      ]
+    },
+    {
+      "name": "default-minsizerel",
+      "displayName": "Default (MinSizeRel)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "inherits": [
+        "minsizerel"
+      ]
     },
     {
       "name": "ccache",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
-        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+        "QGC_USE_CACHE": "ON",
+        "QGC_CACHE_BACKEND": "ccache"
       }
     },
     {
       "name": "sccache",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
-        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
+        "QGC_USE_CACHE": "ON",
+        "QGC_CACHE_BACKEND": "sccache"
       }
     },
     {
@@ -58,13 +63,39 @@
       }
     },
     {
+      "name": "debug-no-tests",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "QGC_BUILD_TESTING": "OFF",
+        "QGC_DEBUG_QML": "ON"
+      }
+    },
+    {
       "name": "release",
       "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "QGC_BUILD_TESTING": "OFF",
-        "QGC_DEBUG_QML": "OFF",
-        "QGC_BUILD_INSTALLER": "ON"
+        "QGC_DEBUG_QML": "OFF"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "QGC_BUILD_TESTING": "OFF",
+        "QGC_DEBUG_QML": "OFF"
+      }
+    },
+    {
+      "name": "minsizerel",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "QGC_BUILD_TESTING": "OFF",
+        "QGC_DEBUG_QML": "OFF"
       }
     },
     {
@@ -75,23 +106,126 @@
         "QGC_BUILD_TESTING": "ON",
         "QGC_ENABLE_COVERAGE": "ON"
       }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-defaults",
+      "hidden": true,
+      "jobs": 0
     },
     {
-      "name": "minimal",
-      "hidden": true,
-      "cacheVariables": {
-        "QGC_VIEWER3D": "OFF",
-        "QGC_ENABLE_BLUETOOTH": "OFF",
-        "QGC_ENABLE_GST_VIDEOSTREAMING": "OFF",
-        "QGC_ENABLE_UVC": "OFF"
-      }
+      "name": "default",
+      "configurePreset": "default",
+      "inherits": [
+        "build-defaults"
+      ]
+    },
+    {
+      "name": "default-release",
+      "configurePreset": "default-release",
+      "inherits": [
+        "build-defaults"
+      ]
+    },
+    {
+      "name": "default-relwithdebinfo",
+      "configurePreset": "default-relwithdebinfo",
+      "inherits": [
+        "build-defaults"
+      ]
+    },
+    {
+      "name": "default-minsizerel",
+      "configurePreset": "default-minsizerel",
+      "inherits": [
+        "build-defaults"
+      ]
     }
   ],
   "testPresets": [
     {
-      "name": "default",
+      "name": "test-defaults",
       "hidden": true,
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "Unit|Integration"
+        },
+        "exclude": {
+          "label": "Flaky|Network"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "inherits": [
+        "test-defaults"
+      ]
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "default",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "default"
+        },
+        {
+          "type": "build",
+          "name": "default"
+        },
+        {
+          "type": "test",
+          "name": "default"
+        }
+      ]
+    },
+    {
+      "name": "default-release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "default-release"
+        },
+        {
+          "type": "build",
+          "name": "default-release"
+        }
+      ]
+    },
+    {
+      "name": "default-relwithdebinfo",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "default-relwithdebinfo"
+        },
+        {
+          "type": "build",
+          "name": "default-relwithdebinfo"
+        }
+      ]
+    },
+    {
+      "name": "default-minsizerel",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "default-minsizerel"
+        },
+        {
+          "type": "build",
+          "name": "default-minsizerel"
+        }
+      ]
     }
   ]
 }

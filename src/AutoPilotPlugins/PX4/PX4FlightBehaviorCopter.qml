@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2021 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -104,7 +95,7 @@ SetupPage {
                         from:               0.5
                         to:                 20
                         majorTickStepSize:  0.6
-                        value:              { value = _mpc_xy_vel_all ? Math.abs(_mpc_xy_vel_all.value) : (from + to) / 2 }
+                        value:              { value = _mpc_xy_vel_all ? Math.abs(_mpc_xy_vel_all.rawValue) : (from + to) / 2 }
                         decimalPlaces:      _mpc_xy_vel_all ? _mpc_xy_vel_all.decimalPlaces : 0
 
                         property bool loadComplete: false
@@ -113,7 +104,7 @@ SetupPage {
 
                         onValueChanged: {
                             if (loadComplete && enabled) {
-                                _mpc_xy_vel_all.value = value
+                                _mpc_xy_vel_all.rawValue = value
                             }
                         }
                     }
@@ -123,8 +114,8 @@ SetupPage {
                     id:                 xyVelCheckbox
                     Layout.fillWidth:   true
                     text:               qsTr("Enable horizontal velocity slider (if enabled, individual velocity limit parameters are automatically set)")
-                    checked:            _mpc_xy_vel_all ? (_mpc_xy_vel_all.value >= 0) : false
-                    onClicked:          mpc_xy_vel_all.value = checked ? Math.abs(_mpc_xy_vel_all.value) : -Math.abs(_mpc_xy_vel_all.value)
+                    checked:            _mpc_xy_vel_all ? (_mpc_xy_vel_all.rawValue >= 0) : false
+                    onClicked:          _mpc_xy_vel_all.rawValue = checked ? Math.abs(_mpc_xy_vel_all.rawValue) : -Math.abs(_mpc_xy_vel_all.rawValue)
                 }
             }
 
@@ -145,7 +136,7 @@ SetupPage {
                         from:               0.2
                         to:                 8
                         majorTickStepSize:  0.2
-                        value:              { value = _mpc_z_vel_all ? Math.abs(_mpc_z_vel_all.value) : (from + to) / 2 }
+                        value:              { value = _mpc_z_vel_all ? Math.abs(_mpc_z_vel_all.rawValue) : (from + to) / 2 }
                         decimalPlaces:      _mpc_z_vel_all ? _mpc_z_vel_all.decimalPlaces : 0
 
                         property bool loadComplete: false
@@ -154,7 +145,7 @@ SetupPage {
 
                         onValueChanged: {
                             if (loadComplete && enabled) {
-                                _mpc_z_vel_all.value = value
+                                _mpc_z_vel_all.rawValue = value
                             }
                         }
                     }
@@ -164,8 +155,8 @@ SetupPage {
                     id:                 zVelCheckbox
                     Layout.fillWidth:   true
                     text:               qsTr("Enable vertical velocity slider (if enabled, individual velocity limit parameters are automatically set)")
-                    checked:            _mpc_z_vel_all && _mpc_z_vel_all.value >= 0
-                    onClicked:          mpc_z_vel_all.value = checked ? Math.abs(_mpc_z_vel_all.value) : -Math.abs(_mpc_z_vel_all.value)
+                    checked:            _mpc_z_vel_all && _mpc_z_vel_all.rawValue >= 0
+                    onClicked:          _mpc_z_vel_all.rawValue = checked ? Math.abs(_mpc_z_vel_all.rawValue) : -Math.abs(_mpc_z_vel_all.rawValue)
                 }
             }
 
@@ -175,11 +166,29 @@ SetupPage {
                 headingDescription: qsTr("Increasing this leads to rounder turns in missions (corner cutting). Use the minimum value for accurate corner tracking.")
 
                 FactSlider {
+                    id:                 navAccRadSlider
                     Layout.fillWidth:   true
-                    from:               QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(2)
-                    to:                 QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(16)
+                    from:               _navAccRadSliderFrom()
+                    to:                 _navAccRadSliderTo()
                     majorTickStepSize:  0.5
                     fact:               controller.getParameterFact(-1, "NAV_ACC_RAD")
+                }
+            }
+
+            function _navAccRadSliderFrom() {
+                return QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(2)
+            }
+
+            function _navAccRadSliderTo() {
+                return QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(16)
+            }
+
+            Connections {
+                target: QGroundControl.unitsConversion
+
+                function onUnitsChanged() {
+                    navAccRadSlider.from = Qt.binding(_navAccRadSliderFrom)
+                    navAccRadSlider.to = Qt.binding(_navAccRadSliderTo)
                 }
             }
         }

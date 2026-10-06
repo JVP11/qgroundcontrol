@@ -16,6 +16,21 @@ SetupPage {
         id: pageComponent
 
         RemoteControlCalibration {
+            id: remoteControlCalibration
+
+            useDeadband: false
+
+            controller: RadioComponentController {
+                statusText: remoteControlCalibration.statusText
+                cancelButton: remoteControlCalibration.cancelButton
+                nextButton: remoteControlCalibration.nextButton
+                joystickMode: false
+
+                onThrottleReversedCalFailure: QGroundControl.showMessageDialog(radioPage, qsTr("Throttle channel reversed"), qsTr("Calibration failed. The throttle channel on your transmitter is reversed. You must correct this on your transmitter in order to complete calibration."))
+            }
+
+            Component.onCompleted: controller.start()
+
             additionalSetupComponent: ColumnLayout {
                 spacing: ScreenTools.defaultFontPixelHeight / 2
 
@@ -26,13 +41,13 @@ SetupPage {
                     Repeater {
                         model: QGroundControl.multiVehicleManager.activeVehicle.px4Firmware ?
                                     (QGroundControl.multiVehicleManager.activeVehicle.multiRotor ?
-                                        [ "RC_MAP_AUX1", "RC_MAP_AUX2", "RC_MAP_PARAM1", "RC_MAP_PARAM2", "RC_MAP_PARAM3"] :
-                                        [ "RC_MAP_FLAPS", "RC_MAP_AUX1", "RC_MAP_AUX2", "RC_MAP_PARAM1", "RC_MAP_PARAM2", "RC_MAP_PARAM3"]) :
+                                        [ "RC_MAP_AUX1", "RC_MAP_AUX2", "RC_MAP_PARAM1", "RC_MAP_PARAM2", "RC_MAP_PARAM3", "RC_MAP_PAY_SW"] :
+                                        [ "RC_MAP_FLAPS", "RC_MAP_AUX1", "RC_MAP_AUX2", "RC_MAP_PARAM1", "RC_MAP_PARAM2", "RC_MAP_PARAM3", "RC_MAP_PAY_SW"]) :
                                     0
 
                         LabelledFactComboBox {
                             label: fact.shortDescription
-                            fact: _controller.getParameterFact(-1, modelData)
+                            fact: controller.getParameterFact(-1, modelData)
                             indexModel: false
                         }
                     }
@@ -50,24 +65,30 @@ SetupPage {
                     QGCButton {
                         id: bindButton
                         text: qsTr("Spektrum Bind")
-                        onClicked: spektrumBindDialogComponent.createObject(mainWindow).open()
+                        onClicked: spektrumBindDialogFactory.open()
                     }
 
                     QGCButton {
                         text: qsTr("CRSF Bind")
-                        onClicked: mainWindow.showMessageDialog(qsTr("CRSF Bind"),
+                        onClicked: QGroundControl.showMessageDialog(radioPage, qsTr("CRSF Bind"),
                                                                 qsTr("Click Ok to place your CRSF receiver in the bind mode."),
                                                                 Dialog.Ok | Dialog.Cancel,
-                                                                function() { _controller.crsfBindMode() })
+                                                                function() { controller.crsfBindMode() })
                     }
 
                     QGCButton {
                         text: qsTr("Copy Trims")
-                        onClicked: mainWindow.showMessageDialog(qsTr("Copy Trims"),
+                        onClicked: QGroundControl.showMessageDialog(radioPage, qsTr("Copy Trims"),
                                                                 qsTr("Center your sticks and move throttle all the way down, then press Ok to copy trims. After pressing Ok, reset the trims on your radio back to zero."),
                                                                 Dialog.Ok | Dialog.Cancel,
-                                                                function() { _controller.copyTrims() })
+                                                                function() { controller.copyTrims() })
                     }
+                }
+
+                QGCPopupDialogFactory {
+                    id: spektrumBindDialogFactory
+
+                    dialogComponent: spektrumBindDialogComponent
                 }
 
                 Component {
@@ -77,7 +98,7 @@ SetupPage {
                         title: qsTr("Spektrum Bind")
                         buttons: Dialog.Ok | Dialog.Cancel
 
-                        onAccepted: { _controller.spektrumBindMode(radioGroup.checkedButton.bindMode) }
+                        onAccepted: { controller.spektrumBindMode(radioGroup.checkedButton.bindMode) }
 
                         ButtonGroup { id: radioGroup }
 

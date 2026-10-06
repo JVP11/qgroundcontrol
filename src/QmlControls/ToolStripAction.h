@@ -1,22 +1,15 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
-#include <QtQml/QQmlComponent>
 #include <QtQmlIntegration/QtQmlIntegration>
+
+class QQmlComponent;
 
 class ToolStripAction : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    Q_MOC_INCLUDE("QtQml/QQmlComponent")
 
 public:
     ToolStripAction(QObject* parent = nullptr);

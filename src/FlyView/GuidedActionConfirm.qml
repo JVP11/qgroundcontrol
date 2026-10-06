@@ -1,24 +1,14 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.UTMSP
 
 Item {
     id:         control
     width:      mainLayout.width
-    visible:    _utmspEnabled === true ? utmspSliderTrigger: false
+    visible:    false
 
     property var    guidedController
     property var    guidedValueSlider
@@ -34,10 +24,6 @@ Item {
 
     property real _margins:         2
     property bool _emergencyAction: action === guidedController.actionEmergencyStop
-
-    // Properties of UTM adapter
-    property bool   utmspSliderTrigger
-    property bool   _utmspEnabled:                       QGroundControl.utmspSupported
 
     Component.onCompleted: guidedController.confirmDialog = this
 
@@ -57,18 +43,28 @@ Item {
         }
     }
 
-    function confirmCancelled() {
-        guidedValueSlider.visible = false
+    function reset() {
         visible = false
+        guidedValueSlider.visible = false
         hideTrigger = false
         visibleTimer.stop()
         messageDisplay.opacity = 1.0
         messageFadeTimer.stop()
         messageOpacityAnimation.stop()
-        if (mapIndicator) {
+    }
+
+    // Cancel the current pending action and notify its map indicator.
+    // Pass incomingIndicator when superseding one action with another (e.g. from confirmAction):
+    // if the old and new indicator are the same object, actionCancelled() is intentionally skipped
+    // so that a show() call made before confirmAction() is not undone (e.g. goto -> goto).
+    // Omit incomingIndicator (or pass undefined) for explicit user cancellation via the X button
+    // or auto-hide trigger, where the indicator must always be notified.
+    function confirmCancelled(incomingIndicator) {
+        reset()
+        if (mapIndicator && mapIndicator !== incomingIndicator) {
             mapIndicator.actionCancelled()
-            mapIndicator = undefined
         }
+        mapIndicator = undefined
     }
 
     function _reallyShow() {
@@ -93,9 +89,9 @@ Item {
         spacing:    ScreenTools.defaultFontPixelWidth
 
         QGCDelayButton {
+            objectName:         "guidedActionConfirmButton"
             text:               control.title
-            enabled:            _utmspEnabled === true? utmspSliderTrigger : true
-            opacity:            if(_utmspEnabled){utmspSliderTrigger === true ? 1 : 0.5} else{1}
+            enabled:            true
 
             onActivated: {
                 control.visible = false
@@ -105,15 +101,15 @@ Item {
                     guidedValueSlider.visible = false
                 }
                 hideTrigger = false
-                guidedController.executeAction(control.action, control.actionData, sliderOutputValue, control.optionChecked)
+                let success = guidedController.executeAction(control.action, control.actionData, sliderOutputValue, control.optionChecked)
                 if (mapIndicator) {
-                    mapIndicator.actionConfirmed()
+                    if (success) {
+                        mapIndicator.actionConfirmed()
+                    } else {
+                        mapIndicator.actionCancelled()
+                    }
                     mapIndicator = undefined
                 }
-
-                UTMSPStateStorage.indicatorOnMissionStatus = true
-                UTMSPStateStorage.currentNotificationIndex = 7
-                UTMSPStateStorage.currentStateIndex = 3
             }
         }
 

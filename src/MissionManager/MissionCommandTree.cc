@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "MissionCommandTree.h"
 #include "FirmwarePlugin.h"
 #include "FirmwarePluginManager.h"
@@ -51,6 +42,15 @@ MissionCommandTree::MissionCommandTree(bool unitTest, QObject *parent)
 
 MissionCommandTree::~MissionCommandTree()
 {
+    for (const auto &vehicleMap : std::as_const(_allCommands)) {
+        for (const auto &commandMap : vehicleMap) {
+            for (MissionCommandUIInfo *const uiInfo : commandMap) {
+                delete uiInfo;
+            }
+        }
+    }
+    _allCommands.clear();
+
     qCDebug(MissionCommandTreeLog) << this;
 }
 
@@ -59,7 +59,8 @@ MissionCommandTree *MissionCommandTree::instance()
     return _missionCommandTreeInstance();
 }
 
-void MissionCommandTree::_collapseHierarchy(const MissionCommandList *cmdList, QMap<MAV_CMD, MissionCommandUIInfo*> &collapsedTree) const
+void MissionCommandTree::_collapseHierarchy(const MissionCommandList* cmdList,
+                                            QMap<MAV_CMD, MissionCommandUIInfo*>& collapsedTree, bool baseList) const
 {
     if (!cmdList) {
         return;
@@ -70,8 +71,11 @@ void MissionCommandTree::_collapseHierarchy(const MissionCommandList *cmdList, Q
         if (uiInfo) {
             if (collapsedTree.contains(command)) {
                 collapsedTree[command]->_overrideInfo(uiInfo);
-            } else {
+            } else if (baseList) {
                 collapsedTree[command] = new MissionCommandUIInfo(*uiInfo);
+            } else {
+                // Override entries are partial; without the base entry they would produce a broken command
+                qCWarning(MissionCommandTreeLog) << "Skipping override with no base command info" << command;
             }
         }
     }
@@ -92,7 +96,8 @@ void MissionCommandTree::_buildAllCommands(Vehicle *vehicle, QGCMAVLink::Vehicle
     QMap<MAV_CMD, MissionCommandUIInfo*> &collapsedTree = _allCommands[firmwareClass][vehicleClass];
 
     // Base of the tree is all commands
-    _collapseHierarchy(_staticCommandTree[MAV_AUTOPILOT_GENERIC][QGCMAVLink::VehicleClassGeneric], collapsedTree);
+    _collapseHierarchy(_staticCommandTree[MAV_AUTOPILOT_GENERIC][QGCMAVLink::VehicleClassGeneric], collapsedTree,
+                       true /* baseList */);
 
     // Add the overrides for specific vehicle types
     if (vehicleClass != QGCMAVLink::VehicleClassGeneric) {

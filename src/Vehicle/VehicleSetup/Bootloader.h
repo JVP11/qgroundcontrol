@@ -1,15 +1,5 @@
-﻿/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
+﻿#pragma once
 
-#pragma once
-
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 
 #ifdef Q_OS_ANDROID
@@ -18,12 +8,10 @@
 #include <QtSerialPort/QSerialPort>
 #endif
 
-Q_DECLARE_LOGGING_CATEGORY(FirmwareUpgradeLog)
-Q_DECLARE_LOGGING_CATEGORY(FirmwareUpgradeVerboseLog)
-
 class FirmwareImage;
 
-/// Bootloader Utility routines. Works with PX4 and 3DR Radio bootloaders.
+/// \brief Bootloader Utility routines. Works with PX4 and 3DR Radio bootloaders.
+///
 class Bootloader : public QObject
 {
     Q_OBJECT

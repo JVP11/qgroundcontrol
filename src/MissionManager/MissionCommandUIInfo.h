@@ -1,21 +1,9 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include <QtCore/QLoggingCategory>
 #include <QtCore/QString>
 #include <QtCore/QVariant>
 
 #include "QGCMAVLink.h"
-
-Q_DECLARE_LOGGING_CATEGORY(MissionCommandsLog)
 
 class MissionCommandTree;
 class MissionCommandUIInfo;
@@ -23,7 +11,7 @@ class MissionCommandUIInfo;
 class MissionCommandTreeTest;
 #endif
 
-/// UI Information associated with a mission command (MAV_CMD) parameter
+/// \brief UI Information associated with a mission command (MAV_CMD) parameter
 ///
 /// MissionCommandParamInfo is used to automatically generate editing ui for a parameter associated with a MAV_CMD.
 ///
@@ -104,7 +92,7 @@ private:
     friend class MissionCommandUIInfo;
 };
 
-/// UI Information associated with a mission command (MAV_CMD)
+/// \brief UI Information associated with a mission command (MAV_CMD)
 ///
 /// MissionCommandUIInfo is used to automatically generate editing ui for a MAV_CMD. This object also supports the concept of only having a set of partial
 /// information for the command. This is used to create overrides of the base command information. For on override just specify the keys you want to modify
@@ -194,6 +182,7 @@ private:
     void _overrideInfo(MissionCommandUIInfo* uiInfo);
 
     MAV_CMD                         _command;
+    bool _commandIdLoaded = false;  ///< Only used to label load errors
     QMap<QString, QVariant>         _infoMap;
     QMap<int, MissionCmdParamInfo*> _paramInfoMap;
     QList<int>                      _paramRemoveList;

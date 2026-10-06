@@ -3,70 +3,79 @@
   "extends": [
     "config:recommended",
     ":dependencyDashboard",
-    ":semanticCommitTypeAll(chore)"
+    ":enablePreCommit",
+    ":semanticCommitTypeAll(deps)"
   ],
-  "git-submodules": {
-    "enabled": true
-  },
   "labels": [
     "dependencies"
   ],
   "ignorePaths": [
     ".github/workflows/**"
   ],
+  "description": "Manages npm, Python, pre-commit, development environments, Gradle dependencies and Wrapper, Node versions, Dockerfiles, and composite actions. Dependabot owns .github/workflows, which are excluded here.",
   "enabledManagers": [
+    "devcontainer",
+    "dockerfile",
+    "github-actions",
+    "gradle-wrapper",
     "npm",
-    "git-submodules",
-    "pip_requirements",
-    "pip_setup",
-    "pre-commit"
+    "pep621",
+    "pre-commit",
+    "gradle",
+    "nvm"
   ],
   "packageRules": [
     {
       "description": "Auto-merge patch updates after CI passes",
-      "matchUpdateTypes": ["patch"],
+      "matchManagers": [
+        "npm",
+        "pep621",
+        "pre-commit"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
       "automerge": true
     },
     {
-      "description": "Group all git submodule updates",
-      "groupName": "Git Submodules",
+      "description": "Combine npm, python, and pre-commit updates into a single PR",
+      "groupName": "all dependencies",
       "matchManagers": [
-        "git-submodules"
-      ],
-      "schedule": [
-        "before 6am on monday"
-      ]
-    },
-    {
-      "description": "Group Node.js updates (docs)",
-      "groupName": "Node.js Dependencies",
-      "matchManagers": [
-        "npm"
-      ],
-      "schedule": [
-        "before 6am on monday"
-      ]
-    },
-    {
-      "description": "Group Python updates (tools)",
-      "groupName": "Python Dependencies",
-      "matchManagers": [
-        "pip_requirements",
-        "pip_setup"
-      ],
-      "schedule": [
-        "before 6am on monday"
-      ]
-    },
-    {
-      "description": "Group pre-commit hook updates",
-      "groupName": "pre-commit hooks",
-      "matchManagers": [
+        "npm",
+        "pep621",
         "pre-commit"
       ],
       "schedule": [
         "before 6am on monday"
       ]
+    },
+    {
+      "description": "Group composite GitHub Action updates not covered by Dependabot",
+      "groupName": "composite action dependencies",
+      "matchManagers": [
+        "github-actions"
+      ]
+    },
+    {
+      "description": "Group development environment and build bootstrap updates",
+      "groupName": "development environment dependencies",
+      "matchManagers": [
+        "devcontainer",
+        "dockerfile",
+        "gradle-wrapper"
+      ]
+    },
+    {
+      "description": "Keep formatter and Python lint tool pins synchronized",
+      "matchPackageNames": [
+        "clang-format",
+        "pre-commit/mirrors-clang-format",
+        "ruff",
+        "astral-sh/ruff-pre-commit",
+        "pyright",
+        "RobertCraigie/pyright-python"
+      ],
+      "groupName": "code quality tools"
     }
   ],
   "prConcurrentLimit": 5,
@@ -82,6 +91,12 @@
     ],
     "schedule": [
       "at any time"
+    ]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on monday"
     ]
   }
 }
