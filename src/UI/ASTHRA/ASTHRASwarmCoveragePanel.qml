@@ -1785,7 +1785,8 @@ Rectangle {
             }
             newConfig.portName = portName
             newConfig.baud = 115200
-            newConfig.dynamic = false
+            // ttyACM numbers change on replug; never persist a link pinned to one.
+            newConfig.dynamic = true
             linkManager.endCreateConfiguration(newConfig)
             Qt.callLater(function () {
                 var savedConfig = null

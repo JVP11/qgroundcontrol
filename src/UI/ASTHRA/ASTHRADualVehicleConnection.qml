@@ -425,8 +425,8 @@ Rectangle {
                         return
                     }
 
-                    // Save the configuration - this adds it to the linkConfigurations list
-                    newConfig.dynamic = false
+                    // ttyACM numbers change on replug; never persist a link pinned to one.
+                    newConfig.dynamic = true
                     linkManager.endCreateConfiguration(newConfig)
                     console.log("ASTHRA: Link configuration created and saved successfully")
                     console.log("ASTHRA: Config after save - name:", newConfig.name, "portName:", newConfig.portName, "baud:", newConfig.baud)

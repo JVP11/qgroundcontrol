@@ -104,8 +104,14 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
         return;
     }
 
-    if (vehicleForLink(link)) {
-        return;
+    // One Vehicle per (link, SYSID): a shared link such as UDP carries many drones, while a
+    // duplicate SYSID on a different dedicated link is still tracked as its own Vehicle.
+    for (int i = 0; i < _vehicles->count(); i++) {
+        const Vehicle *const existing = qobject_cast<const Vehicle*>(_vehicles->get(i));
+        if (existing && (existing->id() == vehicleId) && existing->vehicleLinkManager() &&
+            existing->vehicleLinkManager()->containsLink(link)) {
+            return;
+        }
     }
 
     if (getVehicleById(vehicleId)) {
