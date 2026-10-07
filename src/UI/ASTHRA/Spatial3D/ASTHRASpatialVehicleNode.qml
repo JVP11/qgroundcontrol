@@ -96,20 +96,6 @@ Node {
                 }
             }
         }
-
-        // Identity disc under the airframe in the drone's fleet colour; greyed when stale
-        Model {
-            source: "#Cylinder"
-            castsShadows: false
-            position: Qt.vector3d(0, -0.36 * vehNode.drawScale, 0)
-            scale: Qt.vector3d(0.010 * vehNode.drawScale, 0.0003 * vehNode._boost, 0.010 * vehNode.drawScale)
-            materials: PrincipledMaterial {
-                baseColor: vehNode.stale ? "#5A6168" : vehNode.fleetColor
-                opacity: vehNode.isActive ? 0.42 : 0.28
-                alphaMode: PrincipledMaterial.Blend
-                roughness: 1
-            }
-        }
     }
 
     ASTHRACameraFovCone {
@@ -148,17 +134,42 @@ Node {
         visible: enuPos.y > 0.3
     }
 
-    Model {
-        source: "#Cylinder"
-        castsShadows: false
-        position: Qt.vector3d(0, -enuPos.y + 0.05, 0)
-        scale: Qt.vector3d(0.012 * vehNode._boost, 0.0005, 0.012 * vehNode._boost)
-        materials: PrincipledMaterial {
-            baseColor: vehNode.stale ? "#3D4247" : vehNode.fleetColor
-            opacity: 0.6
-            alphaMode: PrincipledMaterial.Blend
-            roughness: 1
+    // Ground reticle under the drone in its fleet colour
+    Node {
+        id: reticle
+        position: Qt.vector3d(0, -vehNode.enuPos.y + 0.06, 0)
+        readonly property real _r: 0.6 * vehNode.drawScale
+        readonly property color _c: vehNode.stale ? "#3D4247" : vehNode.fleetColor
+
+        ASTHRASpatialRing3D {
+            radius: reticle._r
+            segments: 28
+            color: reticle._c
+            lineWidth: reticle._r * 0.07
         }
-        visible: enuPos.y > 0.2
+        ASTHRASpatialLine3D {
+            p1: Qt.vector3d(-reticle._r * 1.5, 0, 0)
+            p2: Qt.vector3d(-reticle._r * 0.4, 0, 0)
+            color: reticle._c
+            lineWidth: reticle._r * 0.05
+        }
+        ASTHRASpatialLine3D {
+            p1: Qt.vector3d(reticle._r * 0.4, 0, 0)
+            p2: Qt.vector3d(reticle._r * 1.5, 0, 0)
+            color: reticle._c
+            lineWidth: reticle._r * 0.05
+        }
+        ASTHRASpatialLine3D {
+            p1: Qt.vector3d(0, 0, -reticle._r * 1.5)
+            p2: Qt.vector3d(0, 0, -reticle._r * 0.4)
+            color: reticle._c
+            lineWidth: reticle._r * 0.05
+        }
+        ASTHRASpatialLine3D {
+            p1: Qt.vector3d(0, 0, reticle._r * 0.4)
+            p2: Qt.vector3d(0, 0, reticle._r * 1.5)
+            color: reticle._c
+            lineWidth: reticle._r * 0.05
+        }
     }
 }

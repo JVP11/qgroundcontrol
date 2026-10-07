@@ -89,6 +89,7 @@ Item {
     function apply() {
         if (!camera)
             return
+        _aiming = false
         switch (mode) {
         case "follow":
             _applyFollow()
@@ -112,18 +113,33 @@ Item {
         }
     }
 
+    property vector3d _aim: Qt.vector3d(0, 0, 0)
+    property bool _aiming: false
+
     // Camera forward is -Z; yaw about +Y, pitch about +X (negative looks down).
-    function _place(from, to) {
-        if (!camera)
-            return
+    function _orient(from, to) {
         var dx = to.x - from.x
         var dy = to.y - from.y
         var dz = to.z - from.z
         var yaw = Math.atan2(-dx, -dz) * 180 / Math.PI
         var horiz = Math.sqrt(dx * dx + dz * dz)
         var pitch = Math.atan2(dy, horiz) * 180 / Math.PI
-        camera.position = from
         camera.eulerRotation = Qt.vector3d(pitch, yaw, 0)
+    }
+
+    function _place(from, to) {
+        if (!camera)
+            return
+        _aim = to
+        _aiming = true
+        camera.position = from
+        _orient(from, to)
+    }
+
+    // The camera position glides between telemetry updates; keep the aim locked on the target meanwhile.
+    FrameAnimation {
+        running: controller.camera !== null && controller._aiming
+        onTriggered: controller._orient(controller.camera.position, controller._aim)
     }
 
     function _applyFollow() {
