@@ -23,6 +23,7 @@ Node {
     property vector3d enuPos: Qt.vector3d(0, 0, 0)
     property real groundSpeed: 0
     property real courseDeg: 0
+    property color fleetColor: "#4A90D9"
 
     readonly property real _heading: headingEstimated && vehicle && vehicle.gps
                                      ? vehicle.gps.courseOverGround.value
@@ -45,6 +46,20 @@ Node {
 
     // Drawn larger than life (real span 1.27 m) so drones stay readable from the default camera distance.
     property real modelScale: 1.8
+
+    // Far away, grow the airframe so it never shrinks below minScreenPx on screen.
+    property vector3d cameraPos: Qt.vector3d(0, 0, 0)
+    property real viewHeightPx: 0
+    property real viewFovDeg: 50
+    property real minScreenPx: 34
+    readonly property real drawScale: {
+        if (viewHeightPx <= 0)
+            return modelScale
+        var d = cameraPos.minus(enuPos).length()
+        var needed = minScreenPx * 2 * d * Math.tan(viewFovDeg * Math.PI / 360) / viewHeightPx / 1.27
+        return Math.max(modelScale, Math.min(60, needed))
+    }
+    readonly property real _boost: drawScale / modelScale
     property real _propSpin: 0
 
     // Hub positions in model metres; 1/3 and 2/4 are diagonal pairs and counter-rotate.
@@ -68,7 +83,7 @@ Node {
         eulerRotation: Qt.vector3d(_pitch, -_heading, -_roll)
 
         Node {
-            scale: Qt.vector3d(vehNode.modelScale, vehNode.modelScale, vehNode.modelScale)
+            scale: Qt.vector3d(vehNode.drawScale, vehNode.drawScale, vehNode.drawScale)
 
             ASTHRADroneBody { }
 
@@ -82,14 +97,15 @@ Node {
             }
         }
 
-        // Status disc under the airframe: green active, amber estimated heading, grey stale/weak GPS
+        // Identity disc under the airframe in the drone's fleet colour; greyed when stale
         Model {
             source: "#Cylinder"
-            position: Qt.vector3d(0, -0.36 * vehNode.modelScale, 0)
-            scale: Qt.vector3d(0.013 * vehNode.modelScale, 0.0003, 0.013 * vehNode.modelScale)
+            castsShadows: false
+            position: Qt.vector3d(0, -0.36 * vehNode.drawScale, 0)
+            scale: Qt.vector3d(0.010 * vehNode.drawScale, 0.0003 * vehNode._boost, 0.010 * vehNode.drawScale)
             materials: PrincipledMaterial {
-                baseColor: vehNode.bodyColor
-                opacity: 0.32
+                baseColor: vehNode.stale ? "#5A6168" : vehNode.fleetColor
+                opacity: vehNode.isActive ? 0.42 : 0.28
                 alphaMode: PrincipledMaterial.Blend
                 roughness: 1
             }
@@ -100,7 +116,7 @@ Node {
         yawDeg: vehNode.fovYaw
         pitchDeg: vehNode.fovPitch
         fovDeg: vehNode.fovDeg
-        lengthM: Math.max(8, Math.min(40, vehNode.enuPos.y * 0.8 + 10))
+        lengthM: Math.max(5, Math.min(18, vehNode.enuPos.y * 0.5 + 5))
         estimated: vehNode.fovEstimated
         coneVisible: vehNode.showFov && vehNode.isActive && !vehNode.stale
     }
@@ -120,11 +136,12 @@ Node {
 
     Model {
         source: "#Cylinder"
+        castsShadows: false
         position: Qt.vector3d(0, -enuPos.y * 0.5, 0)
-        scale: Qt.vector3d(0.0035, Math.max(0.01, enuPos.y) / 100, 0.0035)
+        scale: Qt.vector3d(0.0012 * vehNode._boost, Math.max(0.01, enuPos.y) / 100, 0.0012 * vehNode._boost)
         materials: PrincipledMaterial {
-            baseColor: stale ? "#3D4247" : "#2D4A5F"
-            opacity: 0.7
+            baseColor: stale ? "#3D4247" : vehNode.fleetColor
+            opacity: 0.45
             alphaMode: PrincipledMaterial.Blend
             roughness: 1
         }
@@ -132,12 +149,13 @@ Node {
     }
 
     Model {
-        source: "#Cube"
-        position: Qt.vector3d(0, -enuPos.y + 0.03, 0)
-        scale: Qt.vector3d(0.016, 0.0005, 0.016)
+        source: "#Cylinder"
+        castsShadows: false
+        position: Qt.vector3d(0, -enuPos.y + 0.05, 0)
+        scale: Qt.vector3d(0.012 * vehNode._boost, 0.0005, 0.012 * vehNode._boost)
         materials: PrincipledMaterial {
-            baseColor: "#000000"
-            opacity: 0.4
+            baseColor: vehNode.stale ? "#3D4247" : vehNode.fleetColor
+            opacity: 0.6
             alphaMode: PrincipledMaterial.Blend
             roughness: 1
         }

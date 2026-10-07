@@ -60,8 +60,9 @@ Rectangle {
     readonly property string origS: (originKind === "gcs" || originKind === "home") ? "PASS" : (originKind === "vehicle" ? "WARN" : "FAIL")
     readonly property string origD: originKind === "gcs" || originKind === "home" ? originLabel : (originKind === "vehicle" ? "frozen on vehicle" : "not set")
 
-    readonly property string gcsS: operatorValid ? "PASS" : "FAIL"
-    readonly property string gcsD: operatorValid ? "this computer" : "GCS POS UNAVAILABLE"
+    // Most ground stations have no GPS of their own; only the OPERATOR camera needs it.
+    readonly property string gcsS: operatorValid ? "PASS" : "WARN"
+    readonly property string gcsD: operatorValid ? "this computer" : "NO GCS GPS"
 
     readonly property string hdgS: !_haveV ? "FAIL" : (headingEstimated ? "WARN" : "PASS")
     readonly property string hdgD: !_haveV ? "—" : (headingEstimated ? "HDG EST (COG)" : "mag")

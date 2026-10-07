@@ -51,6 +51,7 @@ Node {
 
     Model {
         source: "#Cylinder"
+        castsShadows: false
         scale: Qt.vector3d(lineBody.lineWidth / 50, lineBody._length / 100, lineBody.lineWidth / 50)
         position: Qt.vector3d(0, lineBody._length * 0.5, 0)
         materials: PrincipledMaterial {

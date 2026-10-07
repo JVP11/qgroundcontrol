@@ -9,6 +9,7 @@ import QtQuick3D
 import QtPositioning
 
 import QGroundControl
+import QGroundControl.Controls
 
 Item {
     id: spatialScene
@@ -45,6 +46,58 @@ Item {
     property real plotHalf: 100
     property real gridStep: 25
     property string rangeLegend: "25/50/100"
+    property real fleetExtent: 0
+
+    readonly property var _fleetColors: ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
+
+    function fleetColorAt(index) {
+        return _fleetColors[Math.max(0, index) % _fleetColors.length]
+    }
+
+    function enuFor(veh) {
+        if (!veh)
+            return Qt.vector3d(0, 0, 0)
+        if (veh === _active)
+            return droneEnu
+        if (!veh.coordinate || !veh.coordinate.isValid)
+            return Qt.vector3d(0, 0, 0)
+        var alt = veh.altitudeRelative ? veh.altitudeRelative.value : 0
+        return toEnu(veh.coordinate, isNaN(alt) ? 0 : alt)
+    }
+
+    function _updateFleetFrame() {
+        var vehicles = _mvm ? _mvm.vehicles : null
+        var n = 0
+        var cx = 0, cy = 0, cz = 0
+        var pts = []
+        for (var i = 0; vehicles && i < vehicles.count; i++) {
+            var v = vehicles.get(i)
+            if (!v || !v.coordinate || !v.coordinate.isValid)
+                continue
+            var e = enuFor(v)
+            pts.push(e)
+            cx += e.x; cy += e.y; cz += e.z
+            n++
+        }
+        var ext = 0
+        var r = 0
+        if (n > 0) {
+            cx /= n; cy /= n; cz /= n
+            for (var k = 0; k < pts.length; k++) {
+                var dx = pts[k].x - cx, dz = pts[k].z - cz, dy = pts[k].y - cy
+                r = Math.max(r, Math.sqrt(dx * dx + dy * dy + dz * dz))
+                ext = Math.max(ext, Math.abs(pts[k].x), Math.abs(pts[k].z))
+            }
+        }
+        fleetExtent = ext
+        if (cameraController) {
+            cameraController.fleetCenter = Qt.vector3d(cx, cy, cz)
+            cameraController.fleetRadius = r
+            cameraController.fleetCount = n
+            cameraController.viewAspect = view3d.width / Math.max(1, view3d.height)
+            cameraController.fovDeg = perspCam.fieldOfView
+        }
+    }
 
     function toEnu(coord, altM) {
         var ref = gpsRef
@@ -106,7 +159,7 @@ Item {
 
     function _updatePlotScale() {
         var r = 80
-        r = Math.max(r, Math.abs(droneEnu.x), Math.abs(droneEnu.z), Math.abs(droneEnu.y))
+        r = Math.max(r, Math.abs(droneEnu.x), Math.abs(droneEnu.z), Math.abs(droneEnu.y), fleetExtent)
         if (_active && _active.homePosition && _active.homePosition.isValid && gpsRef && gpsRef.isValid) {
             var h = toEnu(_active.homePosition, 0)
             r = Math.max(r, Math.abs(h.x), Math.abs(h.z))
@@ -365,6 +418,7 @@ Item {
         repeat: true
         onTriggered: {
             _updateOrigin()
+            _updateFleetFrame()
             _updateVehicleDerived()
             if (cameraController) {
                 cameraController.targetPos = _active ? droneEnu : Qt.vector3d(0, 0, 0)
@@ -398,15 +452,24 @@ Item {
         renderMode: View3D.Offscreen
 
         environment: SceneEnvironment {
-            clearColor: "#050708"
+            clearColor: "#26303A"
             backgroundMode: SceneEnvironment.Color
+            antialiasingMode: SceneEnvironment.MSAA
+            antialiasingQuality: SceneEnvironment.Medium
+            fog: Fog {
+                enabled: true
+                color: "#26303A"
+                depthEnabled: true
+                depthNear: Math.max(spatialScene.plotHalf * 1.2, perspCam.position.length() * 1.3)
+                depthFar: depthNear * 3.5
+            }
         }
 
         PerspectiveCamera {
             id: perspCam
             position: Qt.vector3d(18, 16, 28)
             eulerRotation: Qt.vector3d(-28, 35, 0)
-            clipNear: 0.4
+            clipNear: 0.2
             clipFar: 80000
             fieldOfView: 50
             property bool smooth: cameraController && cameraController.mode !== "free"
@@ -417,15 +480,26 @@ Item {
         }
 
         DirectionalLight {
-            eulerRotation.x: -62
-            eulerRotation.y: 18
-            brightness: 0.72
+            eulerRotation.x: -58
+            eulerRotation.y: 28
+            brightness: 1.15
+            castsShadow: true
+            shadowFactor: 45
+            shadowMapQuality: Light.ShadowMapQualityHigh
+            shadowMapFar: Math.min(600, spatialScene.plotHalf * 2.5)
+            csmNumSplits: 2
+            pcfFactor: 2
         }
 
         DirectionalLight {
-            eulerRotation.x: 15
-            eulerRotation.y: -140
-            brightness: 0.18
+            eulerRotation.x: -20
+            eulerRotation.y: -150
+            brightness: 0.4
+        }
+
+        DirectionalLight {
+            eulerRotation.x: 70
+            brightness: 0.12
         }
 
         // Plot table
@@ -435,8 +509,9 @@ Item {
             scale: Qt.vector3d(Math.max(4, spatialScene.plotHalf / 50), Math.max(4, spatialScene.plotHalf / 50), 1)
             position: Qt.vector3d(0, 0, 0)
             pickable: false
+            receivesShadows: true
             materials: PrincipledMaterial {
-                baseColor: "#0F1215"
+                baseColor: "#39434D"
                 roughness: 1
                 metalness: 0
             }
@@ -448,8 +523,8 @@ Item {
                 property real g: (index - 4) * spatialScene.gridStep
                 p1: Qt.vector3d(-spatialScene.plotHalf, 0.02, g)
                 p2: Qt.vector3d(spatialScene.plotHalf, 0.02, g)
-                color: "#1F2327"
-                lineWidth: 0.07
+                color: "#4C5864"
+                lineWidth: Math.max(0.06, spatialScene.gridStep * 0.004)
                 opacityFactor: 0.95
             }
         }
@@ -459,8 +534,8 @@ Item {
                 property real g: (index - 4) * spatialScene.gridStep
                 p1: Qt.vector3d(g, 0.02, -spatialScene.plotHalf)
                 p2: Qt.vector3d(g, 0.02, spatialScene.plotHalf)
-                color: "#1F2327"
-                lineWidth: 0.07
+                color: "#4C5864"
+                lineWidth: Math.max(0.06, spatialScene.gridStep * 0.004)
                 opacityFactor: 0.95
             }
         }
@@ -470,27 +545,29 @@ Item {
             Model {
                 property real ringR: index === 0 ? spatialScene.gridStep : (index === 1 ? spatialScene.gridStep * 2 : spatialScene.plotHalf)
                 source: "#Cylinder"
+                castsShadows: false
                 position: Qt.vector3d(0, 0.04, 0)
                 scale: Qt.vector3d(Math.max(0.2, ringR / 50.0), 0.00035, Math.max(0.2, ringR / 50.0))
                 materials: PrincipledMaterial {
-                    baseColor: "#2A3036"
-                    opacity: 0.28
+                    baseColor: "#5A6775"
+                    opacity: 0.22
                     alphaMode: PrincipledMaterial.Blend
                     roughness: 1
                 }
             }
         }
 
-        ASTHRASpatialLine3D { p1: Qt.vector3d(0, 0.06, 0); p2: Qt.vector3d(0, 0.06, -Math.max(14, spatialScene.gridStep * 0.6)); color: "#2D4A5F"; lineWidth: 0.14 }
-        ASTHRASpatialLine3D { p1: Qt.vector3d(0, 0.06, 0); p2: Qt.vector3d(Math.max(14, spatialScene.gridStep * 0.6), 0.06, 0); color: "#D4A017"; lineWidth: 0.14 }
+        // North (-Z) and east (+X) axis stubs at the origin
+        ASTHRASpatialLine3D { p1: Qt.vector3d(0, 0.06, 0); p2: Qt.vector3d(0, 0.06, -Math.max(6, spatialScene.gridStep * 0.3)); color: "#4A90D9"; lineWidth: 0.12 }
+        ASTHRASpatialLine3D { p1: Qt.vector3d(0, 0.06, 0); p2: Qt.vector3d(Math.max(6, spatialScene.gridStep * 0.3), 0.06, 0); color: "#C0392B"; lineWidth: 0.12 }
 
         ASTHRASpatialLine3D {
             visible: _active && !isNaN(spatialScene.droneEnu.x)
             p1: Qt.vector3d(0, 1.6, 0)
             p2: Qt.vector3d(spatialScene.droneEnu.x, Math.max(0.2, spatialScene.droneEnu.y), spatialScene.droneEnu.z)
-            color: spatialScene.stale ? "#3D4247" : "#534AB7"
-            lineWidth: 0.10
-            opacityFactor: 0.7
+            color: spatialScene.stale ? "#3D4247" : "#7A72D8"
+            lineWidth: 0.05
+            opacityFactor: 0.45
         }
 
         Node {
@@ -531,6 +608,7 @@ Item {
             model: _mvm ? _mvm.vehicles : []
             delegate: ASTHRASpatialVehicleNode {
                 vehicle: object
+                fleetColor: spatialScene.fleetColorAt(index)
                 isActive: _active && object && object === _active
                 stale: spatialScene.stale && isActive
                 gpsWeak: spatialScene.gpsWeak && isActive
@@ -541,14 +619,10 @@ Item {
                 showFov: isActive
                 groundSpeed: isActive ? spatialScene.groundSpeed : 0
                 courseDeg: isActive ? spatialScene.courseDeg : 0
-                enuPos: {
-                    if (isActive)
-                        return spatialScene.droneEnu
-                    if (!object || !object.coordinate || !object.coordinate.isValid)
-                        return Qt.vector3d(0, 0, 0)
-                    var alt = object.altitudeRelative ? object.altitudeRelative.value : 0
-                    return spatialScene.toEnu(object.coordinate, alt)
-                }
+                enuPos: spatialScene.enuFor(object)
+                cameraPos: perspCam.position
+                viewHeightPx: view3d.height
+                viewFovDeg: perspCam.fieldOfView
             }
         }
 
@@ -595,6 +669,70 @@ Item {
                 p2: Qt.vector3d(x2, y2, z2)
                 color: col
                 lineWidth: 0.16
+            }
+        }
+    }
+
+    // Per-drone tags projected from the 3D scene every frame
+    Item {
+        anchors.fill: parent
+        visible: spatialScene.visible
+
+        Repeater {
+            model: _mvm ? _mvm.vehicles : []
+            delegate: Rectangle {
+                id: tag
+                required property var object
+                required property int index
+                property vector3d _screen: Qt.vector3d(-1000, -1000, -1)
+                readonly property real _alt: object && object.altitudeRelative ? object.altitudeRelative.value : NaN
+                readonly property color _col: spatialScene.fleetColorAt(index)
+
+                visible: _screen.z > 0 && _screen.x > -width && _screen.x < spatialScene.width + width
+                         && _screen.y > -height && _screen.y < spatialScene.height + height
+                x: _screen.x - width / 2
+                y: _screen.y - height - 22
+                width: tagRow.implicitWidth + 10
+                height: tagRow.implicitHeight + 4
+                radius: 2
+                color: "#CC10151A"
+                border.width: object === spatialScene._active ? 2 : 1
+                border.color: _col
+
+                FrameAnimation {
+                    running: tag.object && spatialScene.visible
+                    onTriggered: {
+                        var e = spatialScene.enuFor(tag.object)
+                        tag._screen = view3d.mapFrom3DScene(Qt.vector3d(e.x, e.y + 1.4, e.z))
+                    }
+                }
+
+                Row {
+                    id: tagRow
+                    anchors.centerIn: parent
+                    spacing: 5
+                    Text {
+                        text: "V" + (tag.object && tag.object.fleetSlot > 0 ? tag.object.fleetSlot : tag.index + 1)
+                        color: tag._col
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.85
+                        font.bold: true
+                    }
+                    Text {
+                        text: isNaN(tag._alt) ? "--" : tag._alt.toFixed(1) + " m"
+                        color: "#D8DEE4"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.8
+                    }
+                    Text {
+                        visible: tag.object && tag.object.armed
+                        text: "ARMED"
+                        color: "#E5534B"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.75
+                        font.bold: true
+                    }
+                }
             }
         }
     }

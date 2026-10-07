@@ -202,6 +202,20 @@ Rectangle {
                         ToolTip.text: "Stay behind the drone"
                     }
                     QGCButton {
+                        text: "FLEET"
+                        font.family: ScreenTools.fixedFontFamily
+                        font.weight: Font.Bold
+                        font.pointSize: ScreenTools.smallFontPointSize
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                        enabled: camCtl.fleetCount >= 2
+                        primary: camCtl.mode === "fleet"
+                        onClicked: camCtl.setMode("fleet")
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 400
+                        ToolTip.text: camCtl.fleetCount >= 2 ? "Frame every drone. Drag to rotate, wheel to zoom" : "Needs two or more drones"
+                    }
+                    QGCButton {
                         text: "ORBIT"
                         font.family: ScreenTools.fixedFontFamily
                         font.weight: Font.Bold
@@ -267,7 +281,7 @@ Rectangle {
                         onClicked: camCtl.reset()
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
-                        ToolTip.text: "Return to follow view"
+                        ToolTip.text: "Return to the default view"
                     }
                     }
                 }

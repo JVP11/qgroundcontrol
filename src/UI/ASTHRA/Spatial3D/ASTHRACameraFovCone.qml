@@ -27,6 +27,7 @@ Node {
 
         Model {
             source: "#Cone"
+            castsShadows: false
             // Qt built-in cone is 100 units; put base at origin, extend along +Y (look).
             position: Qt.vector3d(0, fovRoot.lengthM * 0.5, 0)
             scale: {
@@ -37,20 +38,8 @@ Node {
                 baseColor: fovRoot.estimated ? "#D4A017" : "#2D4A5F"
                 metalness: 0
                 roughness: 1
-                opacity: 0.14
+                opacity: 0.08
                 alphaMode: PrincipledMaterial.Blend
-            }
-        }
-
-        Model {
-            visible: fovRoot.estimated
-            source: "#Cube"
-            position: Qt.vector3d(0, fovRoot.lengthM * 0.22, 0)
-            scale: Qt.vector3d(0.008, 0.008, 0.008)
-            materials: PrincipledMaterial {
-                baseColor: "#D4A017"
-                roughness: 0.5
-                metalness: 0.05
             }
         }
     }
