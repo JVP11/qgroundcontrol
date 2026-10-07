@@ -43,38 +43,53 @@ Node {
         return headingEstimated ? "#D4A017" : "#2A8B55"
     }
 
+    // Drawn larger than life (real span 1.27 m) so drones stay readable from the default camera distance.
+    property real modelScale: 1.8
+    property real _propSpin: 0
+
+    // Hub positions in model metres; 1/3 and 2/4 are diagonal pairs and counter-rotate.
+    readonly property var _propHubs: [
+        { pos: Qt.vector3d( 0.4142, 0.125, -0.4165), dir:  1 },
+        { pos: Qt.vector3d( 0.4142, 0.205,  0.4120), dir: -1 },
+        { pos: Qt.vector3d(-0.4142, 0.205,  0.4120), dir:  1 },
+        { pos: Qt.vector3d(-0.4142, 0.125, -0.4165), dir: -1 }
+    ]
+
+    NumberAnimation on _propSpin {
+        from:       0
+        to:         360
+        duration:   180
+        loops:      Animation.Infinite
+        running:    vehNode.visible && vehNode.vehicle && vehNode.vehicle.armed && !vehNode.stale
+    }
+
     Node {
         opacity: stale ? 0.35 : (gpsWeak ? 0.55 : (isActive ? 1 : 0.5))
         eulerRotation: Qt.vector3d(_pitch, -_heading, -_roll)
 
-        Model {
-            source: "#Cube"
-            scale: Qt.vector3d(0.010, 0.006, 0.022)
-            materials: PrincipledMaterial {
-                baseColor: vehNode.bodyColor
-                metalness: 0.08
-                roughness: 0.72
+        Node {
+            scale: Qt.vector3d(vehNode.modelScale, vehNode.modelScale, vehNode.modelScale)
+
+            ASTHRADroneBody { }
+
+            Repeater3D {
+                model: vehNode._propHubs
+                delegate: ASTHRADronePropeller {
+                    required property var modelData
+                    position: modelData.pos
+                    eulerRotation: Qt.vector3d(0, vehNode._propSpin * modelData.dir, 0)
+                }
             }
         }
 
+        // Status disc under the airframe: green active, amber estimated heading, grey stale/weak GPS
         Model {
-            source: "#Cube"
-            position: Qt.vector3d(0, 0, -1.4)
-            scale: Qt.vector3d(0.006, 0.005, 0.008)
-            materials: PrincipledMaterial {
-                baseColor: vehNode.isActive ? "#F0F2F4" : vehNode.bodyColor
-                metalness: 0.05
-                roughness: 0.65
-            }
-        }
-
-        Model {
-            source: "#Cube"
-            position: Qt.vector3d(0, 0.08, 0)
-            scale: Qt.vector3d(0.026, 0.0012, 0.008)
+            source: "#Cylinder"
+            position: Qt.vector3d(0, -0.36 * vehNode.modelScale, 0)
+            scale: Qt.vector3d(0.013 * vehNode.modelScale, 0.0003, 0.013 * vehNode.modelScale)
             materials: PrincipledMaterial {
                 baseColor: vehNode.bodyColor
-                opacity: 0.55
+                opacity: 0.32
                 alphaMode: PrincipledMaterial.Blend
                 roughness: 1
             }

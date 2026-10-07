@@ -35,6 +35,11 @@ qt_add_qml_module(ASTHRAModule
         Spatial3D/ASTHRACameraFovCone.qml
         Spatial3D/ASTHRASpatialVehicleNode.qml
         Spatial3D/ASTHRASpatialLine3D.qml
+        Spatial3D/ASTHRADroneBody.qml
+        Spatial3D/ASTHRADronePropeller.qml
+    RESOURCES
+        Spatial3D/meshes/asthra_drone_body.mesh
+        Spatial3D/meshes/asthra_drone_prop.mesh
     IMPORTS
         QtQuick
         QtQuick3D
