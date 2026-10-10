@@ -48,15 +48,53 @@ Item {
     property string rangeLegend: "25/50/100"
     property real fleetExtent: 0
 
-    readonly property var _fleetColors: ["#4A90D9", "#2A8B55", "#C9A227", "#D97706", "#C0392B", "#534AB7"]
-    readonly property color _bg: "#0E1216"
-    readonly property color _amber: "#E0A526"
-    readonly property color _steel: "#4A6378"
+    readonly property var _fleetColors: ["#4A90D9", "#2FA866", "#C9A227", "#D97706", "#C0392B", "#7A6FE0"]
 
-    // World size of one screen pixel at the focus distance, stepped so lines don't rebuild every frame.
-    readonly property real _pxRaw: perspCam.position.minus(droneEnu).length()
-                                   * 2 * Math.tan(perspCam.fieldOfView * Math.PI / 360) / Math.max(1, view3d.height)
-    readonly property real px: Math.pow(1.15, Math.round(Math.log(Math.max(1e-4, _pxRaw)) / Math.log(1.15)))
+    readonly property color skyColor: "#0E1317"
+    readonly property color groundColor: "#151B21"
+    readonly property color gridMinorColor: "#1D262E"
+    readonly property color gridMajorColor: "#2B3844"
+    readonly property color axisColor: "#3C7FA6"
+    readonly property color ringColor: "#3E5468"
+    readonly property color frameColor: "#4A5A6A"
+    readonly property color accentColor: "#C9A227"
+
+    // Screen space the host panel's own overlays occupy on the right-hand side.
+    property real topInset: 8
+    property real bottomInset: 8
+    readonly property real cornerWidth: Math.max(compass.width, scaleBox.width)
+
+    // Bumped every frame so screen-projected overlays follow the camera.
+    property int frameTick: 0
+
+    // Ground metres covered by one screen pixel at the view centre; keeps lines about a pixel wide.
+    property real metresPerPx: 0.05
+    readonly property real lineM: Math.max(0.02, Math.min(6, metresPerPx))
+
+    function _updateMetresPerPx() {
+        var h = Math.max(1, view3d.height)
+        metresPerPx = 2 * centreGroundDistance() * Math.tan(perspCam.fieldOfView * Math.PI / 360) / h
+    }
+
+    readonly property var ringRadii: [gridStep, gridStep * 2, plotHalf]
+
+    function project(p) {
+        frameTick
+        return view3d.mapFrom3DScene(p)
+    }
+
+    // Ground distance at screen centre, used for the scale bar.
+    function centreGroundDistance() {
+        frameTick
+        var pitch = perspCam.eulerRotation.x * Math.PI / 180
+        var fy = Math.sin(pitch)
+        var p = perspCam.position
+        if (fy < -0.05 && p.y > 0)
+            return p.y / -fy
+        if (cameraController)
+            return p.minus(cameraController.lookTarget).length()
+        return 100
+    }
 
     function fleetColorAt(index) {
         return _fleetColors[Math.max(0, index) % _fleetColors.length]
@@ -105,17 +143,6 @@ Item {
             cameraController.viewAspect = view3d.width / Math.max(1, view3d.height)
             cameraController.fovDeg = perspCam.fieldOfView
         }
-    }
-
-    function _driveCamera() {
-        if (!cameraController)
-            return
-        cameraController.targetPos = _active ? droneEnu : Qt.vector3d(0, 0, 0)
-        cameraController.targetHeading = _active && _active.heading ? _active.heading.value : 0
-        cameraController.operatorPos = Qt.vector3d(operatorEnu.x, 1.7, operatorEnu.z)
-        cameraController.operatorValid = operatorValid
-        if (cameraController.mode !== "free")
-            cameraController.apply()
     }
 
     function toEnu(coord, altM) {
@@ -183,17 +210,8 @@ Item {
             var h = toEnu(_active.homePosition, 0)
             r = Math.max(r, Math.abs(h.x), Math.abs(h.z))
         }
-        var steps = [25, 50, 100, 200, 250, 500]
-        var want = r * 1.6 / 4
-        var step = steps[steps.length - 1]
-        for (var i = 0; i < steps.length; i++) {
-            if (steps[i] >= want) {
-                step = steps[i]
-                break
-            }
-        }
-        gridStep = step
-        plotHalf = step * 4
+        plotHalf = Math.min(2000, Math.max(100, Math.ceil(r * 1.6 / 50) * 50))
+        gridStep = plotHalf / 4
         rangeLegend = Math.round(gridStep) + "/" + Math.round(gridStep * 2) + "/" + Math.round(plotHalf)
     }
 
@@ -426,11 +444,7 @@ Item {
 
     Connections {
         target: _active
-        function onCoordinateChanged() {
-            _updateVehicleDerived()
-            if (spatialScene.visible)
-                _driveCamera()
-        }
+        function onCoordinateChanged() { _updateVehicleDerived() }
         function onHomePositionChanged() { _updateOrigin(); rebuildOverlays() }
     }
 
@@ -452,8 +466,21 @@ Item {
             _updateOrigin()
             _updateFleetFrame()
             _updateVehicleDerived()
-            _driveCamera()
+            if (cameraController) {
+                cameraController.targetPos = _active ? droneEnu : Qt.vector3d(0, 0, 0)
+                cameraController.targetHeading = _active && _active.heading ? _active.heading.value : 0
+                cameraController.operatorPos = Qt.vector3d(operatorEnu.x, 1.7, operatorEnu.z)
+                cameraController.operatorValid = operatorValid
+                if (cameraController.mode !== "free")
+                    cameraController.apply()
+            }
+            _updateMetresPerPx()
         }
+    }
+
+    FrameAnimation {
+        running: spatialScene.visible
+        onTriggered: spatialScene.frameTick++
     }
 
     Timer {
@@ -477,13 +504,13 @@ Item {
         renderMode: View3D.Offscreen
 
         environment: SceneEnvironment {
-            clearColor: spatialScene._bg
+            clearColor: spatialScene.skyColor
             backgroundMode: SceneEnvironment.Color
             antialiasingMode: SceneEnvironment.MSAA
             antialiasingQuality: SceneEnvironment.High
             fog: Fog {
                 enabled: true
-                color: spatialScene._bg
+                color: spatialScene.skyColor
                 depthEnabled: true
                 depthNear: Math.max(spatialScene.plotHalf * 1.2, perspCam.position.length() * 1.3)
                 depthFar: depthNear * 3.5
@@ -536,100 +563,131 @@ Item {
             pickable: false
             receivesShadows: true
             materials: PrincipledMaterial {
-                baseColor: "#141A20"
-                roughness: 1
+                baseColor: spatialScene.groundColor
+                roughness: 0.92
                 metalness: 0
             }
         }
 
-        // Minor grid, five cells per major cell
+        // Minor grid: five cells per major cell
         Repeater3D {
             model: 41
             ASTHRASpatialLine3D {
                 property real g: (index - 20) * spatialScene.gridStep / 5
                 visible: index % 5 !== 0
-                p1: Qt.vector3d(-spatialScene.plotHalf, 0.01, g)
-                p2: Qt.vector3d(spatialScene.plotHalf, 0.01, g)
-                color: "#1C242C"
-                lineWidth: spatialScene.px * 0.8
-            }
-        }
-        Repeater3D {
-            model: 41
-            ASTHRASpatialLine3D {
-                property real g: (index - 20) * spatialScene.gridStep / 5
-                visible: index % 5 !== 0
-                p1: Qt.vector3d(g, 0.01, -spatialScene.plotHalf)
-                p2: Qt.vector3d(g, 0.01, spatialScene.plotHalf)
-                color: "#1C242C"
-                lineWidth: spatialScene.px * 0.8
-            }
-        }
-
-        // Major grid; the two lines through the origin are the N-S / E-W axes
-        Repeater3D {
-            model: 9
-            ASTHRASpatialLine3D {
-                property real g: (index - 4) * spatialScene.gridStep
                 p1: Qt.vector3d(-spatialScene.plotHalf, 0.02, g)
                 p2: Qt.vector3d(spatialScene.plotHalf, 0.02, g)
-                color: index === 4 ? "#3B4A57" : "#28323C"
-                lineWidth: spatialScene.px * (index === 4 ? 1.6 : 1.1)
+                color: spatialScene.gridMinorColor
+                lineWidth: spatialScene.lineM * 0.8
+            }
+        }
+        Repeater3D {
+            model: 41
+            ASTHRASpatialLine3D {
+                property real g: (index - 20) * spatialScene.gridStep / 5
+                visible: index % 5 !== 0
+                p1: Qt.vector3d(g, 0.02, -spatialScene.plotHalf)
+                p2: Qt.vector3d(g, 0.02, spatialScene.plotHalf)
+                color: spatialScene.gridMinorColor
+                lineWidth: spatialScene.lineM * 0.8
+            }
+        }
+
+        // Major grid
+        Repeater3D {
+            model: 9
+            ASTHRASpatialLine3D {
+                property real g: (index - 4) * spatialScene.gridStep
+                visible: index !== 4
+                p1: Qt.vector3d(-spatialScene.plotHalf, 0.03, g)
+                p2: Qt.vector3d(spatialScene.plotHalf, 0.03, g)
+                color: spatialScene.gridMajorColor
+                lineWidth: spatialScene.lineM * 1.3
             }
         }
         Repeater3D {
             model: 9
             ASTHRASpatialLine3D {
                 property real g: (index - 4) * spatialScene.gridStep
-                p1: Qt.vector3d(g, 0.02, -spatialScene.plotHalf)
-                p2: Qt.vector3d(g, 0.02, spatialScene.plotHalf)
-                color: index === 4 ? "#3B4A57" : "#28323C"
-                lineWidth: spatialScene.px * (index === 4 ? 1.6 : 1.1)
+                visible: index !== 4
+                p1: Qt.vector3d(g, 0.03, -spatialScene.plotHalf)
+                p2: Qt.vector3d(g, 0.03, spatialScene.plotHalf)
+                color: spatialScene.gridMajorColor
+                lineWidth: spatialScene.lineM * 1.3
             }
         }
 
-        // Range rings; the outer one marks the plot boundary
+        // North-south and east-west axes through the origin
+        ASTHRASpatialLine3D {
+            p1: Qt.vector3d(0, 0.05, spatialScene.plotHalf)
+            p2: Qt.vector3d(0, 0.05, -spatialScene.plotHalf)
+            color: spatialScene.axisColor
+            lineWidth: spatialScene.lineM * 1.6
+            opacityFactor: 0.8
+        }
+        ASTHRASpatialLine3D {
+            p1: Qt.vector3d(-spatialScene.plotHalf, 0.05, 0)
+            p2: Qt.vector3d(spatialScene.plotHalf, 0.05, 0)
+            color: spatialScene.axisColor
+            lineWidth: spatialScene.lineM * 1.6
+            opacityFactor: 0.8
+        }
+
+        // Range rings
         Repeater3D {
-            model: 3
-            ASTHRASpatialRing3D {
-                position: Qt.vector3d(0, 0.03, 0)
-                radius: index === 2 ? spatialScene.plotHalf : spatialScene.gridStep * (index + 1)
-                segments: 72
-                color: index === 2 ? spatialScene._steel : "#31495B"
-                lineWidth: spatialScene.px * (index === 2 ? 1.8 : 1.3)
+            model: spatialScene.ringRadii
+            Node {
+                id: ringNode
+                required property var modelData
+                readonly property real ringR: modelData
+                Repeater3D {
+                    model: 72
+                    ASTHRASpatialLine3D {
+                        readonly property real a0: index / 72 * Math.PI * 2
+                        readonly property real a1: (index + 1) / 72 * Math.PI * 2
+                        p1: Qt.vector3d(Math.sin(a0) * ringNode.ringR, 0.06, -Math.cos(a0) * ringNode.ringR)
+                        p2: Qt.vector3d(Math.sin(a1) * ringNode.ringR, 0.06, -Math.cos(a1) * ringNode.ringR)
+                        color: spatialScene.ringColor
+                        lineWidth: spatialScene.lineM * 1.4
+                    }
+                }
             }
         }
 
-        // Bearing ticks every 30 degrees outside the boundary ring, north in amber
+        // Plot boundary with amber corner brackets
         Repeater3D {
-            model: 12
+            model: 4
             ASTHRASpatialLine3D {
-                readonly property real _b: index * 30 * Math.PI / 180
-                readonly property real _r0: spatialScene.plotHalf
-                readonly property real _r1: spatialScene.plotHalf + spatialScene.gridStep * (index % 3 === 0 ? 0.3 : 0.15)
-                p1: Qt.vector3d(Math.sin(_b) * _r0, 0.03, -Math.cos(_b) * _r0)
-                p2: Qt.vector3d(Math.sin(_b) * _r1, 0.03, -Math.cos(_b) * _r1)
-                color: index === 0 ? spatialScene._amber : spatialScene._steel
-                lineWidth: spatialScene.px * (index === 0 ? 3.0 : 2.0)
+                readonly property real h: spatialScene.plotHalf
+                readonly property var c: [[-1, -1], [1, -1], [1, 1], [-1, 1]]
+                p1: Qt.vector3d(c[index][0] * h, 0.07, c[index][1] * h)
+                p2: Qt.vector3d(c[(index + 1) % 4][0] * h, 0.07, c[(index + 1) % 4][1] * h)
+                color: spatialScene.frameColor
+                lineWidth: spatialScene.lineM * 1.6
             }
         }
-
-        // Origin reticle
-        Node {
-            position: Qt.vector3d(0, 0.05, 0)
-            readonly property real _s: Math.max(2, spatialScene.px * 22)
-            ASTHRASpatialLine3D { p1: Qt.vector3d(-parent._s, 0, 0); p2: Qt.vector3d(parent._s, 0, 0); color: spatialScene._amber; lineWidth: spatialScene.px * 2 }
-            ASTHRASpatialLine3D { p1: Qt.vector3d(0, 0, -parent._s); p2: Qt.vector3d(0, 0, parent._s); color: spatialScene._amber; lineWidth: spatialScene.px * 2 }
-            ASTHRASpatialRing3D { radius: parent._s * 0.55; segments: 32; color: spatialScene._amber; lineWidth: spatialScene.px * 2 }
+        Repeater3D {
+            model: 8
+            ASTHRASpatialLine3D {
+                readonly property real h: spatialScene.plotHalf
+                readonly property real len: h * 0.12
+                readonly property int corner: Math.floor(index / 2)
+                readonly property real sx: (corner === 1 || corner === 2) ? 1 : -1
+                readonly property real sz: corner >= 2 ? 1 : -1
+                p1: Qt.vector3d(sx * h, 0.09, sz * h)
+                p2: index % 2 === 0 ? Qt.vector3d(sx * (h - len), 0.09, sz * h) : Qt.vector3d(sx * h, 0.09, sz * (h - len))
+                color: spatialScene.accentColor
+                lineWidth: spatialScene.lineM * 3
+            }
         }
 
         ASTHRASpatialLine3D {
             visible: _active && !isNaN(spatialScene.droneEnu.x)
             p1: Qt.vector3d(0, 1.6, 0)
             p2: Qt.vector3d(spatialScene.droneEnu.x, Math.max(0.2, spatialScene.droneEnu.y), spatialScene.droneEnu.z)
-            color: spatialScene.stale ? "#3D4247" : spatialScene._steel
-            lineWidth: spatialScene.px * 1.2
-            opacityFactor: 0.5
+            color: spatialScene.stale ? "#3D4247" : "#7A72D8"
+            lineWidth: 0.05
+            opacityFactor: 0.45
         }
 
         Node {
@@ -694,7 +752,7 @@ Item {
                 p1: Qt.vector3d(x1, y1, z1)
                 p2: Qt.vector3d(x2, y2, z2)
                 color: "#2D4A5F"
-                lineWidth: Math.max(0.08, spatialScene.px * 1.6)
+                lineWidth: 0.12
                 opacityFactor: 0.9
             }
         }
@@ -705,7 +763,7 @@ Item {
                 p1: Qt.vector3d(x1, y1, z1)
                 p2: Qt.vector3d(x2, y2, z2)
                 color: "#D4A017"
-                lineWidth: Math.max(0.08, spatialScene.px * 2)
+                lineWidth: 0.11
                 opacityFactor: 0.85
             }
         }
@@ -730,193 +788,198 @@ Item {
                 p1: Qt.vector3d(x1, y1, z1)
                 p2: Qt.vector3d(x2, y2, z2)
                 color: col
-                lineWidth: Math.max(0.1, spatialScene.px * 2.5)
+                lineWidth: 0.16
             }
         }
     }
 
-    function _deg3(v) {
-        var n = Math.round(((v % 360) + 360) % 360) % 360
-        return (n < 10 ? "00" : (n < 100 ? "0" : "")) + n
-    }
-
-    function _fmt(v, digits) {
-        return isNaN(v) ? "--" : v.toFixed(digits)
-    }
-
-    component ProjectedText: Text {
-        id: projText
-        property vector3d worldPos
-        property vector3d _s: Qt.vector3d(-1000, -1000, -1)
-        x: _s.x - width / 2
-        y: _s.y - height / 2
-        visible: _s.z > 0
-        font.family: ScreenTools.fixedFontFamily
-        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
-        FrameAnimation {
-            running: spatialScene.visible
-            onTriggered: projText._s = view3d.mapFrom3DScene(projText.worldPos)
-        }
-    }
-
-    // 2D overlay projected from the 3D scene every frame
+    // Screen-space overlay: callouts and labels are projected from the 3D scene every frame
     Item {
+        id: overlay
         anchors.fill: parent
         visible: spatialScene.visible
 
+        readonly property real _fontPx: ScreenTools.defaultFontPixelHeight * 0.72
+        readonly property real _cellH: Math.round(_fontPx * 1.6)
+
+        // Range ring distances, placed on the south-east diagonal to stay clear of the axes
         Repeater {
-            model: 3
-            ProjectedText {
-                readonly property real _r: index === 2 ? spatialScene.plotHalf : spatialScene.gridStep * (index + 1)
-                worldPos: Qt.vector3d(_r * 0.7071, 0.05, -_r * 0.7071)
-                text: Math.round(_r) + " m"
-                color: "#6F8597"
+            model: spatialScene.ringRadii
+            delegate: Rectangle {
+                required property var modelData
+                readonly property vector3d _s: spatialScene.project(Qt.vector3d(modelData * 0.7071, 0.1, modelData * 0.7071))
+                visible: _s.z > 0 && _s.x > 0 && _s.x < spatialScene.width && _s.y > 0 && _s.y < spatialScene.height
+                x: _s.x - width / 2
+                y: _s.y - height / 2
+                width: ringText.implicitWidth + 8
+                height: ringText.implicitHeight + 2
+                color: "#CC0E1317"
+                Text {
+                    id: ringText
+                    anchors.centerIn: parent
+                    text: Math.round(parent.modelData) + " m"
+                    color: "#7D93A8"
+                    font.family: ScreenTools.fixedFontFamily
+                    font.pixelSize: overlay._fontPx * 0.9
+                }
             }
         }
 
+        // Cardinal markers just outside the plot boundary
         Repeater {
-            model: ["N", "E", "S", "W"]
-            ProjectedText {
-                required property string modelData
-                required property int index
-                readonly property real _r: spatialScene.plotHalf + spatialScene.gridStep * 0.6
-                readonly property real _b: index * Math.PI / 2
-                worldPos: Qt.vector3d(Math.sin(_b) * _r, 0.05, -Math.cos(_b) * _r)
-                text: modelData
-                color: index === 0 ? spatialScene._amber : "#8BA0B2"
-                font.bold: true
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.9
+            model: [["N", 0, -1], ["E", 1, 0], ["S", 0, 1], ["W", -1, 0]]
+            delegate: Rectangle {
+                required property var modelData
+                readonly property real _r: spatialScene.plotHalf * 1.07
+                readonly property vector3d _s: spatialScene.project(Qt.vector3d(modelData[1] * _r, 0.1, modelData[2] * _r))
+                visible: _s.z > 0 && _s.x > 0 && _s.x < spatialScene.width && _s.y > 0 && _s.y < spatialScene.height
+                x: _s.x - width / 2
+                y: _s.y - height / 2
+                width: overlay._cellH
+                height: overlay._cellH
+                color: "#E60E1317"
+                border.width: 1
+                border.color: modelData[0] === "N" ? spatialScene.accentColor : spatialScene.frameColor
+                Text {
+                    anchors.centerIn: parent
+                    text: parent.modelData[0]
+                    color: parent.modelData[0] === "N" ? spatialScene.accentColor : "#AEB8C2"
+                    font.family: ScreenTools.fixedFontFamily
+                    font.pixelSize: overlay._fontPx
+                    font.bold: true
+                }
             }
         }
 
-        // Per-drone data plates on a leader line
+        // Drone callouts: ID block, altitude, mode, arm state, with a leader line to the airframe
         Repeater {
             model: _mvm ? _mvm.vehicles : []
             delegate: Item {
                 id: tag
                 required property var object
                 required property int index
-                property vector3d _screen: Qt.vector3d(-1000, -1000, -1)
+                readonly property vector3d _screen: {
+                    var e = spatialScene.enuFor(object)
+                    return spatialScene.project(e)
+                }
                 readonly property real _alt: object && object.altitudeRelative ? object.altitudeRelative.value : NaN
-                readonly property real _gs: object && object.groundSpeed ? object.groundSpeed.value : NaN
-                readonly property real _hdg: object && object.heading ? object.heading.value : NaN
-                readonly property bool _armed: object ? object.armed : false
-                readonly property bool _lost: object && object.vehicleLinkManager ? object.vehicleLinkManager.communicationLost : false
-                readonly property bool _isActive: object === spatialScene._active
                 readonly property color _col: spatialScene.fleetColorAt(index)
-                readonly property real _lead: _compact ? 26 : 34
-                readonly property bool _compact: !_isActive && spatialScene.width < 600
+                readonly property bool _isActive: object === spatialScene._active
+                readonly property bool _lost: object && object.vehicleLinkManager && object.vehicleLinkManager.communicationLost
+                readonly property bool _armed: object && object.armed
+                readonly property real _lead: 34
 
-                x: _screen.x
-                y: _screen.y
+                visible: _screen.z > 0 && _screen.x > -60 && _screen.x < spatialScene.width + 60
+                         && _screen.y > -20 && _screen.y < spatialScene.height + 80
+                x: Math.round(_screen.x)
+                y: Math.round(_screen.y)
                 z: _isActive ? 2 : 1
-                visible: _screen.z > 0 && _screen.x > -plate.width && _screen.x < spatialScene.width + plate.width
-                         && _screen.y > 0 && _screen.y < spatialScene.height + plate.height
 
-                FrameAnimation {
-                    running: tag.object && spatialScene.visible
-                    onTriggered: tag._screen = view3d.mapFrom3DScene(spatialScene.enuFor(tag.object))
+                Rectangle {
+                    x: -7; y: -7
+                    width: 14; height: 14
+                    rotation: 45
+                    color: "transparent"
+                    border.width: tag._isActive ? 2 : 1
+                    border.color: tag._lost ? "#8B9199" : tag._col
                 }
 
                 Rectangle {
                     x: -0.5
                     y: -tag._lead
                     width: 1
-                    height: tag._lead - 16
-                    color: tag._col
+                    height: tag._lead - 9
+                    color: tag._lost ? "#8B9199" : tag._col
+                    opacity: 0.85
                 }
 
                 Rectangle {
-                    id: plate
-                    x: Math.max(4 - tag.x, Math.min(-5, spatialScene.width - tag.x - width - 4))
+                    x: Math.max(4 - tag.x, Math.min(spatialScene.width - 4 - tag.x - width, -width / 2))
                     y: -tag._lead - height
-                    width: plateCol.implicitWidth + 16
-                    height: plateCol.implicitHeight + 8
-                    color: "#E60E1216"
+                    width: calloutRow.implicitWidth + 2
+                    height: overlay._cellH + 2
+                    color: "#EB0F1418"
                     border.width: 1
-                    border.color: tag._isActive ? tag._col : "#2E3A45"
+                    border.color: tag._isActive ? tag._col : "#34404B"
 
-                    Rectangle {
-                        width: 3
-                        height: parent.height
-                        color: tag._col
-                    }
+                    Row {
+                        id: calloutRow
+                        x: 1; y: 1
+                        height: overlay._cellH
 
-                    Column {
-                        id: plateCol
-                        x: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 2
-
-                        Row {
-                            spacing: 6
+                        Rectangle {
+                            width: idText.implicitWidth + 12
+                            height: parent.height
+                            color: tag._lost ? "#5A6168" : tag._col
                             Text {
+                                id: idText
+                                anchors.centerIn: parent
                                 text: "V" + (tag.object && tag.object.fleetSlot > 0 ? tag.object.fleetSlot : tag.index + 1)
-                                color: tag._col
+                                color: "#0E1317"
                                 font.family: ScreenTools.fixedFontFamily
-                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.8
+                                font.pixelSize: overlay._fontPx
                                 font.bold: true
                             }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: tag._compact
-                                text: spatialScene._fmt(tag._alt, 1) + " m"
-                                color: "#B8C2CC"
-                                font.family: ScreenTools.fixedFontFamily
-                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.65
-                            }
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: chipText.implicitWidth + 8
-                                height: chipText.implicitHeight + 2
-                                color: tag._lost ? spatialScene._amber : (tag._armed ? "#C0392B" : "#1E262E")
-                                border.width: tag._lost || tag._armed ? 0 : 1
-                                border.color: "#3A4652"
-                                Text {
-                                    id: chipText
-                                    anchors.centerIn: parent
-                                    text: tag._lost ? "LINK LOST" : (tag._armed ? "ARMED" : "DISARMED")
-                                    color: tag._lost ? spatialScene._bg : (tag._armed ? "#FFFFFF" : "#8B9199")
-                                    font.family: ScreenTools.fixedFontFamily
-                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
-                                    font.bold: true
-                                }
-                            }
                         }
-
                         Text {
-                            visible: !tag._compact
-                            text: "ALT " + spatialScene._fmt(tag._alt, 1)
-                                  + "  GS " + spatialScene._fmt(tag._gs, 1)
-                                  + "  HDG " + (isNaN(tag._hdg) ? "---" : spatialScene._deg3(tag._hdg))
-                            color: "#B8C2CC"
+                            height: parent.height
+                            leftPadding: 7; rightPadding: 5
+                            verticalAlignment: Text.AlignVCenter
+                            text: isNaN(tag._alt) ? "-- m" : tag._alt.toFixed(1) + " m"
+                            color: "#E2E7EC"
                             font.family: ScreenTools.fixedFontFamily
-                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.65
+                            font.pixelSize: overlay._fontPx
+                            font.bold: true
+                        }
+                        Text {
+                            visible: spatialScene.width > 560
+                            height: parent.height
+                            leftPadding: 2; rightPadding: 7
+                            verticalAlignment: Text.AlignVCenter
+                            text: tag.object && tag.object.flightMode ? String(tag.object.flightMode).toUpperCase() : "--"
+                            color: "#8B9AA8"
+                            font.family: ScreenTools.fixedFontFamily
+                            font.pixelSize: overlay._fontPx * 0.9
+                        }
+                        Rectangle {
+                            width: stateText.implicitWidth + 12
+                            height: parent.height
+                            color: tag._lost ? "#7A5A12" : (tag._armed ? "#B03A2E" : "#26323C")
+                            Text {
+                                id: stateText
+                                anchors.centerIn: parent
+                                text: tag._lost ? "LOST" : (tag._armed ? "ARMED" : "SAFE")
+                                color: tag._lost || tag._armed ? "#F4F6F8" : "#7FA88E"
+                                font.family: ScreenTools.fixedFontFamily
+                                font.pixelSize: overlay._fontPx * 0.85
+                                font.bold: true
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Camera compass: needle points to north as seen from the current view
+        // Compass: needle tracks true north as the camera turns
         Item {
             id: compass
-            visible: spatialScene.width > 420
+            readonly property real _yaw: { spatialScene.frameTick; return perspCam.eulerRotation.y }
+            readonly property int _bearing: Math.round(((-_yaw % 360) + 360) % 360) % 360
             anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 12
-            width: dial.width
-            height: dial.height + camLabel.implicitHeight + 4
-            readonly property real _yaw: perspCam.eulerRotation.y
+            anchors.top: parent.top
+            anchors.rightMargin: 12
+            anchors.topMargin: spatialScene.topInset
+            width: ScreenTools.defaultFontPixelHeight * 4.2
+            height: width + bearingText.implicitHeight + 4
 
             Rectangle {
                 id: dial
-                width: ScreenTools.defaultFontPixelHeight * 4.6
+                width: parent.width
                 height: width
                 radius: width / 2
-                color: "#CC0E1216"
+                color: "#D90E1317"
                 border.width: 1
-                border.color: spatialScene._steel
+                border.color: spatialScene.frameColor
 
                 Item {
                     anchors.fill: parent
@@ -927,55 +990,141 @@ Item {
                         Rectangle {
                             required property int index
                             x: dial.width / 2 - width / 2
-                            y: 3
+                            y: 2
                             width: index % 3 === 0 ? 2 : 1
                             height: index % 3 === 0 ? 7 : 4
-                            color: index === 0 ? spatialScene._amber : spatialScene._steel
+                            color: index === 0 ? spatialScene.accentColor : "#5C6E80"
                             transform: Rotation {
                                 origin.x: width / 2
-                                origin.y: dial.height / 2 - 3
+                                origin.y: dial.height / 2 - 2
                                 angle: index * 30
                             }
                         }
                     }
 
-                    Rectangle {
-                        x: dial.width / 2 - 1
-                        y: dial.height * 0.24
-                        width: 2
-                        height: dial.height * 0.26
-                        color: spatialScene._amber
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            var c = width / 2
+                            var r = width / 2 - 10
+                            ctx.reset()
+                            ctx.fillStyle = spatialScene.accentColor
+                            ctx.beginPath()
+                            ctx.moveTo(c, c - r)
+                            ctx.lineTo(c - 5, c)
+                            ctx.lineTo(c + 5, c)
+                            ctx.closePath()
+                            ctx.fill()
+                            ctx.fillStyle = "#4A5A6A"
+                            ctx.beginPath()
+                            ctx.moveTo(c, c + r)
+                            ctx.lineTo(c - 5, c)
+                            ctx.lineTo(c + 5, c)
+                            ctx.closePath()
+                            ctx.fill()
+                        }
                     }
 
                     Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: dial.height * 0.24 - height
+                        x: dial.width / 2 - width / 2
+                        y: 9
                         text: "N"
-                        color: spatialScene._amber
+                        color: spatialScene.accentColor
                         font.family: ScreenTools.fixedFontFamily
-                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                        font.pixelSize: overlay._fontPx * 0.9
                         font.bold: true
+                        rotation: -compass._yaw
                     }
                 }
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 5
-                    height: 5
-                    radius: 2.5
-                    color: "#B8C2CC"
+                    width: 5; height: 5; radius: 2.5
+                    color: "#E2E7EC"
                 }
             }
 
             Text {
-                id: camLabel
+                id: bearingText
                 anchors.top: dial.bottom
                 anchors.topMargin: 4
                 anchors.horizontalCenter: dial.horizontalCenter
-                text: "CAM " + spatialScene._deg3(-compass._yaw) + "°"
-                color: "#8B9199"
+                text: "BRG " + ("00" + compass._bearing).slice(-3) + "°"
+                color: "#AEB8C2"
                 font.family: ScreenTools.fixedFontFamily
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.65
+                font.pixelSize: overlay._fontPx * 0.9
+            }
+        }
+
+        // Scale bar and camera readout
+        Rectangle {
+            id: scaleBox
+            readonly property real _mpp: spatialScene.metresPerPx
+            readonly property real _barM: {
+                var raw = _mpp * ScreenTools.defaultFontPixelHeight * 7
+                if (!(raw > 0))
+                    return 0
+                var p = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10))
+                var steps = [1, 2, 5, 10]
+                var best = p
+                for (var i = 0; i < steps.length; i++) {
+                    if (steps[i] * p <= raw)
+                        best = steps[i] * p
+                }
+                return best
+            }
+            readonly property real _barPx: _mpp > 0 ? _barM / _mpp : 0
+            readonly property real _elev: { spatialScene.frameTick; return -perspCam.eulerRotation.x }
+            readonly property real _range: spatialScene.centreGroundDistance()
+
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 10
+            anchors.bottomMargin: spatialScene.bottomInset
+            width: Math.max(readout.implicitWidth, _barPx) + 16
+            height: readout.implicitHeight + overlay._cellH + 14
+            color: "#D90E1317"
+            border.width: 1
+            border.color: "#34404B"
+            visible: _barM > 0
+
+            Text {
+                id: readout
+                anchors.top: parent.top
+                anchors.topMargin: 5
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                text: "CAM " + (spatialScene.cameraController ? spatialScene.cameraController.modeTitle : "--")
+                      + "  EL " + Math.round(scaleBox._elev) + "°"
+                      + "  R " + (scaleBox._range >= 1000 ? (scaleBox._range / 1000).toFixed(2) + " km" : Math.round(scaleBox._range) + " m")
+                color: "#AEB8C2"
+                font.family: ScreenTools.fixedFontFamily
+                font.pixelSize: overlay._fontPx * 0.9
+            }
+
+            Item {
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 5
+                width: scaleBox._barPx
+                height: overlay._cellH
+
+                Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 2; color: "#E2E7EC" }
+                Rectangle { anchors.left: parent.left; anchors.bottom: parent.bottom; width: 2; height: 8; color: "#E2E7EC" }
+                Rectangle { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; width: 1; height: 5; color: "#E2E7EC" }
+                Rectangle { anchors.right: parent.right; anchors.bottom: parent.bottom; width: 2; height: 8; color: "#E2E7EC" }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 5
+                    text: scaleBox._barM >= 1000 ? (scaleBox._barM / 1000) + " km" : scaleBox._barM + " m"
+                    color: "#E2E7EC"
+                    font.family: ScreenTools.fixedFontFamily
+                    font.pixelSize: overlay._fontPx * 0.9
+                    font.bold: true
+                }
             }
         }
     }

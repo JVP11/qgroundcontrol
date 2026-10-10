@@ -297,6 +297,12 @@ Rectangle {
                     anchors.fill: parent
                     planMasterController: spatialView.planMasterController
                     cameraController: camCtl
+                    topInset: {
+                        if (checkStrip.width + scene.cornerWidth + 32 > width)
+                            return checkStrip.y + checkStrip.height + 8
+                        return hintBox.visible ? hintBox.y + hintBox.height + 8 : 8
+                    }
+                    bottomInset: hud.width + scene.cornerWidth + 32 > width ? hud.height + 16 : 10
                 }
 
                 MouseArea {
@@ -351,6 +357,7 @@ Rectangle {
                 }
 
                 Rectangle {
+                    id: hintBox
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 8

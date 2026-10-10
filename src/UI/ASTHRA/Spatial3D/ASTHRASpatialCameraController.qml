@@ -34,6 +34,7 @@ Item {
     property int fleetCount: 0
     property real viewAspect: 1
     property real fovDeg: 50
+    readonly property vector3d lookTarget: (mode === "fleet" && fleetCount >= 2) ? fleetCenter : targetPos
 
     property real followDistance: 10
     property real followHeight: 4
@@ -89,7 +90,6 @@ Item {
     function apply() {
         if (!camera)
             return
-        _aiming = false
         switch (mode) {
         case "follow":
             _applyFollow()
@@ -113,33 +113,18 @@ Item {
         }
     }
 
-    property vector3d _aim: Qt.vector3d(0, 0, 0)
-    property bool _aiming: false
-
     // Camera forward is -Z; yaw about +Y, pitch about +X (negative looks down).
-    function _orient(from, to) {
+    function _place(from, to) {
+        if (!camera)
+            return
         var dx = to.x - from.x
         var dy = to.y - from.y
         var dz = to.z - from.z
         var yaw = Math.atan2(-dx, -dz) * 180 / Math.PI
         var horiz = Math.sqrt(dx * dx + dz * dz)
         var pitch = Math.atan2(dy, horiz) * 180 / Math.PI
-        camera.eulerRotation = Qt.vector3d(pitch, yaw, 0)
-    }
-
-    function _place(from, to) {
-        if (!camera)
-            return
-        _aim = to
-        _aiming = true
         camera.position = from
-        _orient(from, to)
-    }
-
-    // The camera position glides between telemetry updates; keep the aim locked on the target meanwhile.
-    FrameAnimation {
-        running: controller.camera !== null && controller._aiming
-        onTriggered: controller._orient(controller.camera.position, controller._aim)
+        camera.eulerRotation = Qt.vector3d(pitch, yaw, 0)
     }
 
     function _applyFollow() {
